@@ -11,6 +11,11 @@ The engine uses a custom Orthogonal Syntax Matrix to parse, evaluate, and inject
 * Prioritize deterministic execution. Generative AI prompts require exact repeatability based on seed and tree path.
 * Do not attempt to use `re.sub` or raw Regex to parse Bounded Tokens (`< >`, `{ }`). You must use the custom Pushdown Automaton / character-by-character Lexer to prevent nesting failures.
 * Maintain the strict separation between **State** (the Context Stack) and **Output** (the Return Buffer/Trace State Object). Do not allow literal text to leak into the definition contexts.
+* When writing test cases, use raw strings (e.g., `r"string"`) for any strings containing regex patterns or escape sequences to avoid unintended Python string interpretation.
+* Ensure syntax elements (e.g., `:`, `< >`, `/ /`) are not surrounded by extraneous whitespace in test strings or context definitions, as the parser is sensitive to exact formatting.
+* For regex patterns in definitions, wrap both key and value in `/ /` if they contain regex syntax; use escape characters only for syntax markers, not arbitrary backslashes.
+* When adding new tests, enable debug mode in `generate()` calls until the test passes to inspect stack and trace logs.
+* Only unescape characters that are part of the defined syntax (e.g., `\` before `:`, `<`, `>`, `/`); do not arbitrarily skip backslashed characters outside of syntax.
 
 ---
 

@@ -45,7 +45,10 @@ class ASTNode:
         # ARCHITECTURE: Full AST Node lifecycle as per copilot-instructions.md section 2
 
         # 1. Push local arguments to Context
-        # TODO: Parse <key|arg:val> and <key|arg::val> syntax via _push_local_args
+        # TODO: Parse <key|:arg:val> and <key|:arg::val> syntax via _push_local_args
+        # TODO Add scope markers to context stack if not transparant, and ensure proper popping after evaluation of children. Transparent nodes should not push scope markers, allowing their definition to bleed over to their siblings.
+        # Scope is controlled by the parent node when invoking the child node, and in most cases the child node will pop any changes it made to the context stack before returning, so that sibling nodes are not affected. However, if the parent node invokes the child node as transparent (e.g., <<child_1>|<child_2>>), then the child node's changes to the context stack will not be popped, allowing them to affect sibling nodes. This allows for flexible scoping rules where some nodes can have isolated local scope while others can share scope with their siblings.
+        # Scoping covers more than just arguments passed to the current node; it also covers any definitions that are meant to be local to the current node and its children, which should override global definitions but not affect sibling nodes unless the parent invoked this node as transparent.
         # (Scoping framework - currently bypassed for simple resolution)
         # added_strong, added_weak = self._push_local_args(self, context)
 
@@ -60,6 +63,8 @@ class ASTNode:
         resolved_string = ""
         for token in parsed_tokens:
             if isinstance(token, ASTNode):
+                # TODO Parse multi-part tokens (e.g., <key|:arg:val>)
+                # TODO Check if token key contains other token invocations or parsing boundaries that need to be resolved before context lookup
                 # SCOPING ARCHITECTURE: Will be used once _push_local_args is implemented
                 """
                 # Apply scoping rules for local arguments
@@ -139,6 +144,13 @@ class ASTNode:
         # - Stack of open brackets < > for proper nesting
         # - Building token list (literals and ASTNode objects)
         # Tracks escaped characters and nested < ... > frames without regex backtracking.
+        # TODO How should newlines be handled in prompts? Should lines be atomic units that cannot be spanned by tokens?
+        # TODO Ensure that lines containing definitions in prompts are parsed as definitions and not passed through as literal text without evaluation.
+        # TODO Should the lexer handle parsing of definition strings, or should the start of tokens be checked for definition syntax and routed to a separate definition parser?
+        # TODO Extend to handle multiple token boundaries (e.g., { ... }). 
+        # TODO Handling of contents is different between types of boundaries, so need to track type of boundary in ASTNode and apply different resolution logic in evaluate() based on type.
+        # Could also just pass the bounded text with delimiters to the evaluation and let it handle parsing and resolution based on boundary type
+        # TODO How to handle intersecting token boundaries (e.g. < { > })? Hierchical nesting should be supported, but whether to resolve either of the tokens in this case and which is TBD
 
         main_tokens = []
         stack = []  # each frame is {'parts': [], 'literal': []}
@@ -233,7 +245,8 @@ class ASTNode:
         return normalized
 
     def _push_local_args(self, token: 'ASTNode', context: MacroContext) -> Tuple[int, int]:
-        # Parses token arguments (e.g., <key|arg:val>) and pushes to context.
+        # TODO May need to be refactored as part of the implementation of multi-part token parsing (e.g., <key|:arg:val>) and the scoping framework for local arguments.
+        # Parses token arguments (e.g., <key|:arg:val>) and pushes to context.
         # Returns number of (strong, weak) definitions added to manage popping.
         return (0, 0)
 
@@ -242,6 +255,7 @@ class PromptEngine:
         self.global_context = MacroContext()
         self._parse_global_context(global_context_string)
 
+    # TODO Update documentation for syntax and agent instructions to reflect the exact proper escaping rules for strings
     def _unescape(self, text: str) -> str:
         result = []
         i = 0
@@ -266,7 +280,9 @@ class PromptEngine:
         return backslashes % 2 == 0
 
     def _parse_global_context(self, context_string: str):
-        # Parse newline-separated definitions using syntax composition from syntax.json:
+        # TODO This parser should be folded into the same pushdown automaton / character-by-character lexer architecture as _lex_string, since it needs to handle the same escaping and regex syntax, and may also contain literal text that needs to be preserved in the context.
+        # There is no real conceptual difference between a context string and a prompt string; both are just input strings that need to be parsed for definitions and literal text.
+        # Also, there is no true global scope vs local scope; it's all just a single context stack with definitions pushed in a certain order. What is being called global scope is really just the root node's local scope, and the prompt is just the initial input to that root node.
         # - Bounded Strong:  :[KEY]:[VALUE]
         # - Bounded Weak:    :[KEY]::[VALUE]
         # - Pre Strong:      :<[KEY]:[VALUE]
@@ -332,6 +348,11 @@ class PromptEngine:
             self.global_context.push(definition)
 
     def generate(self, prompt: str, debug: bool=False) -> Tuple[str, Dict]:
+        # TODO Parse non-definitions as literal text to add to the evaluation of the prompt itself, allowing context to contain both definitions and literal text.
+        # TODO Unify the evaluation of the prompt with the evaluation of the context string, so that definitions and literal text in the context are treated the same as definitions and literal text in the prompt.
+        # The prompt and the global context are currently treated as separate strings, but they are really just the "local" and "upstream" contexts of a single evaluation process.
+        # We really should not even have a context string as a test input at all, and should just have a single input string that contains both definitions and the prompt text, which is then fully evaluated as a single AST with a single context stack.
+        # This would also allow for more complex interactions between definitions and prompt text, such as definitions that reference other definitions in the same context string, or prompt text that contains definitions that are only meant to be used within the prompt itself.
         trace_log = {}
         root = ASTNode(prompt, is_transparent=True)
         final_prompt = root.evaluate(self.global_context, trace_log)

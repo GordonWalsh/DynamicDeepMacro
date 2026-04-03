@@ -160,19 +160,19 @@
         "outcome": "A brown dog."
       },
       "PARAMETERIZED_INVOCATION": {
-        "syntax": "<key|arg1:val1>",
+        "syntax": "<key|:arg1:val1>",
         "context": "Inline text.",
         "description": "A key, followed by a pipe `|`, followed by argument definitions separated by pipes, enclosed in angle brackets.",
         "behavior": "Pushes `arg1` as a STRONG definition to local scope, evaluates `<key>`, then pops `arg1`.",
-        "example": "<subject|color:red>",
+        "example": "<subject|:color:red>",
         "outcome": "Evaluates `subject` with `color` strictly defined as `red`."
       },
       "DEFAULT_PARAMETER_INVOCATION": {
-        "syntax": "<key|arg1::val1>",
+        "syntax": "<key|:arg1::val1>",
         "context": "Inline text.",
         "description": "Same as parameterized, but using a double colon `::` for the argument definition.",
         "behavior": "Pushes `arg1` as a WEAK definition to local scope.",
-        "example": "<subject|color::yellow>",
+        "example": "<subject|:color::yellow>",
         "outcome": "Evaluates `subject` with `color` as `yellow` ONLY IF no higher-priority definition exists."
       },
       "ATOMIC_ASSIGN_AND_RETURN": {
@@ -190,17 +190,43 @@
         "behavior": "Simultaneously pushes `key:value` as a WEAK definition (Head of stack) and resolves the AST node to `value`.",
         "example": "The <man::guy> arrived.",
         "outcome": "Outputs 'The guy arrived' and registers `man:guy` as a weak definition for subsequent sibling nodes."
+      }
+    },
+    "4_SCOPE_CONTROL": {
+      "SCOPE_SIBLINGS": {
+        "syntax": "<key|<MacroA>|<MacroB>>",
+        "context": "Inline text, wrapping multiple invocations.",
+        "description": "A key, followed by a pipe `|`, followed by invocations separated by pipes, enclosed in angle brackets.",
+        "behavior": "The `|` suppresses standard `ENTER_SCOPE`/`EXIT_SCOPE` markers from `MACRO` invocations. Macros share a continuous local scope block. `MacroA` is evaluated first, then `MacroB`, with any definitions from `MacroA` still active during `MacroB` evaluation, continuing for any further invocations, then finally `key` is resolved with the context intact.",
+        "example": "<photo|<SetNumber>|<SetObject>>",
+        "outcome": "Definitions hoisted by `<SetNumber>` remain active and accessible during `<SetObject>` evaluation, then definitions from both are active during `<photo>` evaluation, popping only when the outer `< >` terminates."
       },
       "TRANSPARENT_BLOCK_DUMMY_ROOT": {
         "syntax": "<|<MacroA>|<MacroB>>",
         "context": "Inline text, wrapping multiple invocations.",
         "description": "An opening angle bracket followed immediately by a pipe `|`, followed by macro invocations separated by pipes, closed by an angle bracket.",
-        "behavior": "The isolated `|` suppresses standard `ENTER_SCOPE`/`EXIT_SCOPE` markers. Macros share a continuous local scope block.",
-        "example": "<|<SetColors>|<DrawScene>>",
-        "outcome": "Definitions hoisted by `<SetColors>` remain active and accessible during `<DrawScene>` evaluation, popping only when the outer `< >` terminates."
+        "behavior": "The empty string before the first `|` suppresses standard `ENTER_SCOPE`/`EXIT_SCOPE` markers on the outer `<>` block as well as on `MacroA` and `MacroB`. The definitions from `MacroA` and `MacroB` remain active and accessible during the evaluation of the invoking node.",
+        "example": "<|<SetColors>>A <ColorA> hat and <ColorB> coat.",
+        "outcome": "Definitions hoisted by `<SetColors>` remain active and accessible during later evaluations, popping only when the current node terminates."
+      },
+      "INLINE_LOCAL_DEFINITION": {
+        "syntax": "<|:arg1::val1>",
+        "context": "Inline text.",
+        "description": "Same as the Transparent Block Dummy Root, but with a single argument definition literal instead of macro invocation.",
+        "behavior": "Pushes `arg1` as a WEAK definition to local scope.",
+        "example": "The red <|:otherColor:blue> ball and after some extra long descriptive text that makes it hard to keep track of the <otherColor> cube.",
+        "outcome": "Evaluates as `The red ball and ... the blue cube.`, with both colors being input together but output far apart."
+      },
+      "SCOPED_PATTERN": {
+        "syntax": "<key|:>/pattern/:replacement>",
+        "context": "Inline text.",
+        "description": "Same as the Parameterized Invocation, but with an unbounded replacement.",
+        "behavior": "Adds the pattern-replacement definition to the scoped context then evaluates `<key>`.",
+        "example": "<myDog|:>dog:cat> saw their dogs.",
+        "outcome": "Evaluates as `My friendly pet cat saw their dogs.`, with the pattern applying to the <myDog> invocation but not elsewhere."
       }
     },
-    "4_MULTI_VALUE_SEQUENCES": {
+    "5_MULTI_VALUE_SEQUENCES": {
       "STANDARD_RANDOM": {
         "syntax": "{a|b|c}",
         "context": "Inline text or definition values.",
@@ -234,7 +260,33 @@
         "outcome": "Randomly selects 1, 2, or 3 items from the pool."
       }
     },
-    "5_DEFERRED_STRETCH_FEATURES": {
+    "6_TOKEN_INDIRECTION": {
+      "KEY_INDIRECTION": {
+        "syntax": "<my_<metaKey>>",
+        "context": "Inline text.",
+        "description": "A string token, bounded by angle brackets, containing literal text and another token invocation in angle brackets.",
+        "behavior": "Resolves the inner `my_<metaKey>` to a flat string literal first by evaluating it, and then resolves the outer `< >` as a standard invocation using that resolved key.",
+        "example": "I love <my_<animal1>> and <my_<animal2>>.",
+        "outcome": "Outputs `I love my small pet rat and my big pet dog.` after evaluating the inner keys to `my_rat` and `my_dog`, then resolving those as standard invocations."
+      },
+      "KEY_MODIFICATION": {
+        "syntax": "<{key}|:<pattern:replacement>",
+        "context": "Inline text.",
+        "description": "A key inside curly braces, followed by a pipe `|`, followed by a pre-pattern definition, all enclosed in angle brackets.",
+        "behavior": "Adds the prepattern to the shared scope, then recognizes the curly braces in the first segment as containing resolvable text rather than a literal key, resolves it to its single option, applies the pre-pattern substitution to that string, then resolves the resulting string as a standard invocation.",
+        "example": "<{cat}|:</^ca/:ba>",
+        "outcome": "Evaluates `<bat>` to get defined value, then outputs that. With the start-anchored pre-pattern `/^ca/` added to the shared scope, it replaces `ca` with `ba` in evaluating the key string, but is unlikely to false-positive match the value string for `bat`, then it goes out of scope"
+      },
+      "KEY_RANDOMIZATION": {
+        "syntax": "<key_{a|b|c}>",
+        "context": "Inline text.",
+        "description": "A key with literal text followed by a set of alternatives inside curly braces.",
+        "behavior": "Picks an option by standard seeded-randomization rules, then resolves the resulting key as a standard invocation. The randomization occurs at the key level, so it does not affect the resolution of the value or the application of patterns within that value.",
+        "example": "<my_{cat|dog|hamster}>",
+        "outcome": "Randomly selects one of the alternatives and then resolves the reulting evaluated key as a standard invocation."
+      }
+    },
+    "7_DEFERRED_STRETCH_FEATURES": {
       "POSITIONAL_ARGUMENTS": {
         "syntax": "<0>, <1>",
         "status": "Deferred to V2",
