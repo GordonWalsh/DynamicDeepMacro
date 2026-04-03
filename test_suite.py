@@ -79,6 +79,49 @@ class TestMacroEngine(unittest.TestCase):
         result, trace = self.engine.generate(prompt)
         self.assertEqual(result, "Look at the blue car")
 
+    def test_regex_pattern(self):
+        """Verify regex patterns in bounded tokens work correctly."""
+        self.engine._parse_global_context(r":/cat/:feline")
+        prompt = r"The black <cat>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, r"The black feline")
+
+    def test_regex_pattern_with_capture(self):
+        """Verify regex patterns with capture groups."""
+        self.engine._parse_global_context(r":/(cat)/:/feline \\1/")
+        prompt = r"The <cat>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, r"The feline cat")
+
+    def test_regex_wildcard(self):
+        """Verify regex in bounded definitions."""
+        self.engine._parse_global_context(r":/^.*animal$/:creature")
+        prompt = r"A <big animal>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, r"A creature")
+
+    def test_escape_on_regex_pattern(self):
+        """Verify escaped regex patterns are treated as literals."""
+        self.engine._parse_global_context(r":\\/cat\\/:feline")
+        prompt = r"The </cat/>"
+        result, trace = self.engine.generate(prompt)
+        # This should be treated as a literal key '/cat/' rather than regex '/cat/'.
+        self.assertEqual(result, r"The feline")
+
+    # def test_escaped_colon_in_key_definition(self):
+    #     """Verify that escaped colon in key is treated as literal key char."""
+    #     self.engine._parse_global_context(r":foo\\:bar:baz")
+    #     prompt = r"<foo:bar>"
+    #     result, trace = self.engine.generate(prompt)
+    #     self.assertEqual(result, r"baz")
+
+    def test_escaped_slash_key_literal(self):
+        """Verify that escaped leading slash avoids regex key mode and uses literal key."""
+        self.engine._parse_global_context(r":\\/cat\\/:feline")
+        prompt = r"</cat/>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, r"feline")
+
     # COMMENTED OUT: Tests below are for future implementation
     # def test_strong_shadowing(self):
     #     """Verify that a local strong definition overrides a global definition."""

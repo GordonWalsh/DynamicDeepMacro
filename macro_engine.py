@@ -7,9 +7,12 @@ from typing import List, Dict, Tuple, Optional
 class Definition:
     pattern_class: str  # 'PRE', 'BOUND', 'POST'
     strength: str       # 'STRONG', 'WEAK'
-    is_regex: bool
+    key_is_regex: bool
+    value_is_regex: bool
     key: str
     value: str
+
+SYNTAX_CHARACTERS = r'\\:/<>{}'
 
 class MacroContext:
     def __init__(self):
@@ -76,8 +79,17 @@ class ASTNode:
                 definitions = context.get_definitions('BOUNDED')
                 resolved = None
                 for d in definitions:
-                    if d.key == token.raw_text:
-                        resolved = d.value
+                    # TODO Smarter Regex handling: Need to handle literals in re.sub safely, and surround regex keys with ^ $ to prevent partial matches, or switch to re.fullmatch for regex keys.
+                    # TODO Counterintuitive behavior: If key is regex, it is applied to the token's raw text, not the resolved child text. This may change depending on future decisions about token structure and evaluation order.
+                    if d.key_is_regex:
+                        if re.search(d.key, token.raw_text):
+                            resolved = re.sub(d.key, d.value, token.raw_text)
+                            break
+                    elif d.key == token.raw_text:
+                        if d.value_is_regex:
+                            resolved = re.sub(re.escape(d.key), d.value, token.raw_text)
+                        else:
+                            resolved = d.value
                         break
                 if resolved is None:
                     # TODO: Configurable options for unresolved tokens (e.g., empty string, error, or keep as-is)
@@ -110,9 +122,12 @@ class ASTNode:
         # Executes Left-to-Right sequentially using left-to-right prioritized definitions
         current_text = text
         for d in definitions:
-            if d.is_regex:
-                # Standard Python re.sub
+            # TODO Smarter Regex handling: Just re escape non-regex literals and use re.sub for all, with conditional logic for regex vs literal replacement text
+            if d.key_is_regex:
                 current_text = re.sub(d.key, d.value, current_text)
+            elif d.value_is_regex:
+                # apply a literal key replace, but with regex-style replacement text
+                current_text = current_text.replace(d.key, d.value)
             else:
                 current_text = current_text.replace(d.key, d.value)
         return current_text
@@ -227,6 +242,29 @@ class PromptEngine:
         self.global_context = MacroContext()
         self._parse_global_context(global_context_string)
 
+    def _unescape(self, text: str) -> str:
+        result = []
+        i = 0
+        while i < len(text):
+            if text[i] == '\\' and i + 1 < len(text) and text[i + 1] in SYNTAX_CHARACTERS:
+                result.append(text[i + 1])
+                i += 2
+            else:
+                result.append(text[i])
+                i += 1
+        return ''.join(result)
+
+    def _is_unescaped_slash_delimited(self, text: str) -> bool:
+        if len(text) < 2 or not text.startswith('/') or not text.endswith('/'):
+            return False
+        # Check ending slash is not escaped
+        backslashes = 0
+        idx = len(text) - 2
+        while idx >= 0 and text[idx] == '\\':
+            backslashes += 1
+            idx -= 1
+        return backslashes % 2 == 0
+
     def _parse_global_context(self, context_string: str):
         # Parse newline-separated definitions using syntax composition from syntax.json:
         # - Bounded Strong:  :[KEY]:[VALUE]
@@ -239,8 +277,7 @@ class PromptEngine:
             line = line.strip()
             if not line:
                 continue
-            
-            # Determine CLASS and STRENGTH by examining prefixes and separators
+
             pattern_class = 'BOUNDED'
             strength = 'STRONG'
             content = line
@@ -256,41 +293,57 @@ class PromptEngine:
                 content = line[1:]  # Remove :
             else:
                 continue  # Skip lines that don't start with :
-            
-            # Now parse [KEY]::[VALUE] or [KEY]:[VALUE] to determine strength
-            # Split on :: first to check for weak, then on : for strong
-            if '::' in content:
-                parts = content.split('::', 1)
-                if len(parts) == 2:
-                    key, value = parts
-                    strength = 'WEAK'
-                else:
-                    continue
-            elif ':' in content:
-                parts = content.split(':', 1)
-                if len(parts) == 2:
-                    key, value = parts
-                    strength = 'STRONG'
-                else:
-                    continue
+
+            # Find the first unescaped separator (: not preceded by backslash)
+            m = re.search(r'(?<!\\):', content)
+            if not m:
+                continue
+            sep_index = m.start()
+            if sep_index + 1 < len(content) and content[sep_index + 1] == ':':
+                sep = '::'
             else:
-                continue  # No separator found
-            
-            # Determine if key/value are regex (enclosed in /) or literal
-            key_is_regex = key.startswith('/') and key.endswith('/')
-            value_is_regex = value.startswith('/') and value.endswith('/')
-            
+                sep = ':'
+
+            raw_key = content[:sep_index]
+            raw_value = content[sep_index + len(sep):]
+            strength = 'WEAK' if sep == '::' else 'STRONG'
+
+            key_is_regex = self._is_unescaped_slash_delimited(raw_key)
+            value_is_regex = self._is_unescaped_slash_delimited(raw_value)
+
+            if key_is_regex:
+                key = self._unescape(raw_key[1:-1])
+            else:
+                key = self._unescape(raw_key)
+
+            if value_is_regex:
+                value = self._unescape(raw_value[1:-1])
+            else:
+                value = self._unescape(raw_value)
+
             definition = Definition(
                 pattern_class=pattern_class,
                 strength=strength,
-                is_regex=key_is_regex or value_is_regex,  # Mark as regex if either is
+                key_is_regex=key_is_regex,
+                value_is_regex=value_is_regex,
                 key=key,
                 value=value
             )
             self.global_context.push(definition)
 
-    def generate(self, prompt: str) -> Tuple[str, Dict]:
+    def generate(self, prompt: str, debug: bool=False) -> Tuple[str, Dict]:
         trace_log = {}
         root = ASTNode(prompt, is_transparent=True)
         final_prompt = root.evaluate(self.global_context, trace_log)
+        if debug:
+            print('--- DEBUG TRACE ---')
+            print('prompt:', prompt)
+            print('final_prompt:', final_prompt)
+            print('context stack:')
+            for d in self.global_context.stack:
+                print(' ', d)
+            print('trace log:')
+            for k, v in trace_log.items():
+                print(' ', k, '=>', v)
+            print('--- END DEBUG ---')
         return final_prompt, trace_log
