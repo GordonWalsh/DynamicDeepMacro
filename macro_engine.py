@@ -33,25 +33,24 @@ class MacroContext:
         return [d for d in self.stack if d.pattern_class == pattern_class]
 
 class ASTNode:
-    def __init__(self, raw_text: str, is_transparent: bool = False):
+    def __init__(self, raw_text: str, is_transparent: bool = False, content_parts: Optional[List] = None):
         self.raw_text = raw_text
         self.is_transparent = is_transparent
-        self.children = []
+        self.content_parts = content_parts if content_parts is not None else []
     
     def evaluate(self, context: MacroContext, trace_log: Dict) -> str:
         # ARCHITECTURE: Full AST Node lifecycle as per copilot-instructions.md section 2
-        
+
         # 1. Push local arguments to Context
         # TODO: Parse <key|arg:val> and <key|arg::val> syntax via _push_local_args
         # (Scoping framework - currently bypassed for simple resolution)
         # added_strong, added_weak = self._push_local_args(self, context)
-        
+
         # 2. Apply Unbounded Pre-Patterns (Left-to-Right on string and definition order)
-        # text = self._apply_unbounded(self.raw_text, context.get_definitions('PRE'))
-        text = self.raw_text
-        
+        text = self._apply_unbounded(self.raw_text, context.get_definitions('PRE'))
+
         # 3. Lex and Parse Bounded Tokens (<...> and {...})
-        # TODO: Proper pushdown automaton in _lex_string to handle nesting and escaping
+        # Proper pushdown automaton in _lex_string handles nesting and escaping.
         parsed_tokens = self._lex_string(text)
         
         # 4. Recursively Evaluate Children and Concatenate
@@ -91,8 +90,7 @@ class ASTNode:
                 resolved_string += token
 
         # 5. Apply Unbounded Post-Patterns (Left-to-Right on string and definition order)
-        # final_string = self._apply_unbounded(resolved_string, context.get_definitions('POST'))
-        final_string = resolved_string
+        final_string = self._apply_unbounded(resolved_string, context.get_definitions('POST'))
         
         # 6. Pop local scope
         # TODO: Implement once _push_local_args scoping is complete
@@ -121,25 +119,99 @@ class ASTNode:
         # - Current position and escaped state
         # - Stack of open brackets < > for proper nesting
         # - Building token list (literals and ASTNode objects)
-        # TODO: Implement stack-based balanced-delimiter parser
-        
-        # TEMPORARY REGEX-BASED APPROACH (to be replaced with proper lexer):
-        import re
-        tokens = []
-        pattern = r'<([^>]*)>'
-        last_end = 0
-        for match in re.finditer(pattern, text):
-            # Add literal text before
-            if match.start() > last_end:
-                tokens.append(text[last_end:match.start()])
-            # Add ASTNode for the content
-            content = match.group(1)
-            tokens.append(ASTNode(content))
-            last_end = match.end()
-        # Add remaining literal
-        if last_end < len(text):
-            tokens.append(text[last_end:])
-        return tokens if tokens else [text]
+        # Tracks escaped characters and nested < ... > frames without regex backtracking.
+
+        main_tokens = []
+        stack = []  # each frame is {'parts': [], 'literal': []}
+        literal_buffer = []
+
+        def flush_literal_to(target_list):
+            nonlocal literal_buffer
+            if literal_buffer:
+                target_list.append(''.join(literal_buffer))
+                literal_buffer = []
+
+        def append_literal(char):
+            if stack:
+                stack[-1]['literal'].append(char)
+            else:
+                literal_buffer.append(char)
+
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            # Handle escape sequences for <, >, and backslash
+            if ch == '\\' and i + 1 < len(text):
+                nxt = text[i + 1]
+                if nxt in '<>\\':
+                    append_literal(nxt)
+                    i += 2
+                    continue
+                append_literal(ch)
+                i += 1
+                continue
+
+            if ch == '<':
+                # Starting a new bounded token; flush current literal into main tokens or current frame
+                if stack:
+                    frame = stack[-1]
+                    if frame['literal']:
+                        frame['parts'].append(''.join(frame['literal']))
+                        frame['literal'] = []
+                else:
+                    flush_literal_to(main_tokens)
+                stack.append({'parts': [], 'literal': []})
+                i += 1
+                continue
+
+            if ch == '>' and stack:
+                # Close current bounded token
+                frame = stack.pop()
+                if frame['literal']:
+                    frame['parts'].append(''.join(frame['literal']))
+                    frame['literal'] = []
+
+                # Build raw_text as concatenated unresolved content (without delimiters)
+                raw_text = ''.join(p.raw_text if isinstance(p, ASTNode) else p for p in frame['parts'])
+                node = ASTNode(raw_text, is_transparent=False, content_parts=frame['parts'])
+
+                if stack:
+                    stack[-1]['parts'].append(node)
+                else:
+                    main_tokens.append(node)
+                i += 1
+                continue
+
+            append_literal(ch)
+            i += 1
+
+        # Cleanup at end of string
+        if stack:
+            # Unclosed < tokens are emitted as literal text (graceful degradation)
+            unclosed = ''
+            for frame in stack:
+                if frame['literal']:
+                    frame['parts'].append(''.join(frame['literal']))
+                inner = ''.join(p.raw_text if isinstance(p, ASTNode) else p for p in frame['parts'])
+                unclosed += '<' + inner
+            if literal_buffer:
+                unclosed += ''.join(literal_buffer)
+            return [unclosed]
+
+        flush_literal_to(main_tokens)
+
+        if not main_tokens:
+            return [text]
+
+        # Merge adjacent literal strings (optional normalization)
+        normalized = []
+        for item in main_tokens:
+            if normalized and isinstance(item, str) and isinstance(normalized[-1], str):
+                normalized[-1] += item
+            else:
+                normalized.append(item)
+
+        return normalized
 
     def _push_local_args(self, token: 'ASTNode', context: MacroContext) -> Tuple[int, int]:
         # Parses token arguments (e.g., <key|arg:val>) and pushes to context.
