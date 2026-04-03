@@ -7,6 +7,8 @@ The engine uses a custom Orthogonal Syntax Matrix to parse, evaluate, and inject
 
 **Current Implementation Status:** The core engine is implemented in `macro_engine.py` as a Python module with unit tests in `test_suite.py`. ComfyUI integration is planned but not yet implemented.
 
+**Unified Parsing Architecture (Future):** The engine currently treats global context definitions and prompt text as separate inputs, but they should be unified into a single parsing pipeline. Both are subject to the same definition syntax and escaping rules. The roadmap is to merge `_parse_global_context` and `_lex_string` into a single character-by-character lexer that produces a mixed AST containing definition nodes and literal/invocation nodes, allowing definitions to appear anywhere in the input stream and creating true local scoping where definitions pushed during evaluation of one subtree do not leak to siblings unless the parent node is transparent.
+
 **Core Directives for AI Agents:**
 * Prioritize deterministic execution. Generative AI prompts require exact repeatability based on seed and tree path.
 * Do not attempt to use `re.sub` or raw Regex to parse Bounded Tokens (`< >`, `{ }`). You must use the custom Pushdown Automaton / character-by-character Lexer to prevent nesting failures.

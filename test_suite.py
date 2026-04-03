@@ -102,9 +102,9 @@ class TestMacroEngine(unittest.TestCase):
 
     def test_escape_on_regex_pattern(self):
         """Verify escaped regex patterns are treated as literals."""
-        self.engine._parse_global_context(r":\\/cat\\/:feline")
+        self.engine._parse_global_context(r":\/cat\/:feline")
         prompt = r"The </cat/>"
-        result, trace = self.engine.generate(prompt)
+        result, trace = self.engine.generate(prompt, debug=False)
         # This should be treated as a literal key '/cat/' rather than regex '/cat/'.
         self.assertEqual(result, r"The feline")
 
@@ -117,9 +117,9 @@ class TestMacroEngine(unittest.TestCase):
 
     def test_escaped_slash_key_literal(self):
         """Verify that escaped leading slash avoids regex key mode and uses literal key."""
-        self.engine._parse_global_context(r":\\/cat\\/:feline")
+        self.engine._parse_global_context(r":\/cat\/:feline")
         prompt = r"</cat/>"
-        result, trace = self.engine.generate(prompt)
+        result, trace = self.engine.generate(prompt, debug=False)
         self.assertEqual(result, r"feline")
 
     # COMMENTED OUT: Tests below are for future implementation

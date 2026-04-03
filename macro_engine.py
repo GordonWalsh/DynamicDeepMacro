@@ -42,9 +42,16 @@ class ASTNode:
         self.content_parts = content_parts if content_parts is not None else []
     
     def evaluate(self, context: MacroContext, trace_log: Dict) -> str:
-        # ARCHITECTURE: Full AST Node lifecycle as per copilot-instructions.md section 2
+        r"""ARCHITECTURE: Full AST Node lifecycle as per copilot-instructions.md section 2
 
-        # 1. Push local arguments to Context
+        1. Push local arguments to Context
+        2. Apply Unbounded Pre-Patterns (Left-to-Right on string and definition order)
+        3. Lex and Parse Bounded Tokens (<...> and {...})
+        4. Recursively Evaluate Children and Concatenate
+        5. Apply Unbounded Post-Patterns
+        6. Pop local scope
+        7. Log Trace State
+        """
         # TODO: Parse <key|:arg:val> and <key|:arg::val> syntax via _push_local_args
         # TODO Add scope markers to context stack if not transparant, and ensure proper popping after evaluation of children. Transparent nodes should not push scope markers, allowing their definition to bleed over to their siblings.
         # Scope is controlled by the parent node when invoking the child node, and in most cases the child node will pop any changes it made to the context stack before returning, so that sibling nodes are not affected. However, if the parent node invokes the child node as transparent (e.g., <<child_1>|<child_2>>), then the child node's changes to the context stack will not be popped, allowing them to affect sibling nodes. This allows for flexible scoping rules where some nodes can have isolated local scope while others can share scope with their siblings.
@@ -138,12 +145,31 @@ class ASTNode:
         return current_text
 
     def _lex_string(self, text: str):
-        # ARCHITECTURE: Pushdown Automaton / Character-by-Character Lexer
-        # This will scan the string character-by-character, tracking:
-        # - Current position and escaped state
-        # - Stack of open brackets < > for proper nesting
-        # - Building token list (literals and ASTNode objects)
-        # Tracks escaped characters and nested < ... > frames without regex backtracking.
+        r"""Character-by-character Pushdown Automaton Lexer
+        
+        CURRENT SCOPE: Parses bounded token boundaries < > in prompt text only.
+        Produces a mixed token list of literal strings and ASTNode objects.
+        
+        FUTURE SCOPE (unified architecture): This should also:
+        - Detect and parse definition lines (starting with :)
+        - Handle escaped characters across all syntax (not just < > \)
+        - Create Definition nodes in addition to Invocation and Literal nodes
+        - Support line-by-line definition detection while preserving literal text
+        
+        Properly handles:
+        - Escaped delimiters (\< \> \\)
+        - Nested token boundaries (< < > >)
+        - Unclosed tokens (graceful degradation)
+        - Preservation of literal text with newlines
+        
+        Stack frame structure: {'parts': [...], 'literal': [...]}
+        - 'parts': mixed list of literal strings and nested ASTNode objects
+        - 'literal': character buffer for current literal span
+        
+        FUTURE: Extend to track definition nodes as separate entities,
+        with parse routing logic to identify and extract definition syntax
+        before lexing bounded tokens.
+        """
         # TODO How should newlines be handled in prompts? Should lines be atomic units that cannot be spanned by tokens?
         # TODO Ensure that lines containing definitions in prompts are parsed as definitions and not passed through as literal text without evaluation.
         # TODO Should the lexer handle parsing of definition strings, or should the start of tokens be checked for definition syntax and routed to a separate definition parser?
@@ -251,6 +277,39 @@ class ASTNode:
         return (0, 0)
 
 class PromptEngine:
+    r"""UNIFIED PARSING ARCHITECTURE PLAN:
+    
+    Current state (dual pipeline):
+    - _parse_global_context() parses definition lines line-by-line, creating a Context Stack
+    - ASTNode.evaluate() lexes the prompt via _lex_string() to find bounded tokens < >
+    - Pre/Post patterns are applied before/after AST resolution
+    
+    Future unified state (single pipeline):
+    The global context string and the prompt string should be unified into a single input
+    that is processed by a single character-by-character lexer capable of handling:
+    1. Definition syntax (:[KEY]:[VALUE], etc.) appearing anywhere in the input
+    2. Bounded token boundaries (< >) and nested structures
+    3. Literal text preservation with proper newline handling
+    4. Escape sequence handling for all syntax characters
+    
+    This unified lexer would produce a mixed AST where nodes can be:
+    - Definition nodes (push/pop context state)
+    - Literal nodes (preserved text with newlines)
+    - Invocation nodes (bounded < > tokens to resolve)
+    
+    Benefits of unification:
+    - True local scoping: definitions in one subtree don't leak to siblings unless parent is transparent
+    - Definitions can reference other definitions in the same context
+    - No artificial separation between "global" and "local" context
+    - Prompt text and context definitions use identical parsing rules
+    
+    Implementation strategy:
+    1. Refactor _lex_string to detect and route definition syntax (lines starting with :)
+    2. Merge definition parsing into the same character-by-character loop
+    3. Extend ASTNode to track definition nodes separately from invocation/literal nodes
+    4. Modify evaluate() to process definitions during traversal, managing stack push/pop
+    5. Update PromptEngine to accept a single unified input string instead of separate context
+    """
     def __init__(self, global_context_string: str):
         self.global_context = MacroContext()
         self._parse_global_context(global_context_string)
@@ -280,15 +339,31 @@ class PromptEngine:
         return backslashes % 2 == 0
 
     def _parse_global_context(self, context_string: str):
-        # TODO This parser should be folded into the same pushdown automaton / character-by-character lexer architecture as _lex_string, since it needs to handle the same escaping and regex syntax, and may also contain literal text that needs to be preserved in the context.
-        # There is no real conceptual difference between a context string and a prompt string; both are just input strings that need to be parsed for definitions and literal text.
-        # Also, there is no true global scope vs local scope; it's all just a single context stack with definitions pushed in a certain order. What is being called global scope is really just the root node's local scope, and the prompt is just the initial input to that root node.
-        # - Bounded Strong:  :[KEY]:[VALUE]
-        # - Bounded Weak:    :[KEY]::[VALUE]
-        # - Pre Strong:      :<[KEY]:[VALUE]
-        # - Pre Weak:        :<[KEY]::[VALUE]
-        # - Post Strong:     :>[KEY]:[VALUE]
-        # - Post Weak:       :>[KEY]::[VALUE]
+        """
+        TEMPORARY IMPLEMENTATION: Line-by-line definition parser
+        
+        Parses context definition lines using pattern: [PREFIX][KEY][SEPARATOR][VALUE]
+        where PREFIX indicates pattern class (:<, :>, or none for bounded),
+        SEPARATOR is : for strong or :: for weak.
+        
+        FUTURE: This should be merged into a unified lexer that handles both
+        definitions and literal text as part of a single AST construction phase.
+        Currently, context_string is treated as pure definitions (lines starting with :).
+        Once unified, context_string would be treated like prompt text: definitions
+        push/pop context during AST traversal, and non-definition lines are literal text.
+        
+        Syntax patterns supported (see syntax.json for full grammar):
+        - Bounded Strong:  :[KEY]:[VALUE]
+        - Bounded Weak:    :[KEY]::[VALUE]
+        - Pre Strong:      :<[KEY]:[VALUE]
+        - Pre Weak:        :<[KEY]::[VALUE]
+        - Post Strong:     :>[KEY]:[VALUE]
+        - Post Weak:       :>[KEY]::[VALUE]
+        
+        KEY and VALUE can each be either:
+        - Literal text: plain string characters
+        - Regex pattern: enclosed in / / and interpreted as Python regex
+        """
         for line in context_string.split('\n'):
             line = line.strip()
             if not line:
