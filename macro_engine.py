@@ -71,7 +71,7 @@ class ASTNode:
                     for _ in range(added_strong): context.pop_strong()
                     for _ in range(added_weak): context.pop_weak()
                 """
-                # CURRENT IMPLEMENTATION: Simple bounded token resolution
+                # CURRENT IMPLEMENTATION: Simple bounded token resolution with recursive evaluation
                 # Resolve <key> by searching context stack left-to-right (strong first, weak fallback)
                 definitions = context.get_definitions('BOUNDED')
                 resolved = None
@@ -80,8 +80,12 @@ class ASTNode:
                         resolved = d.value
                         break
                 if resolved is None:
-                    resolved = token.raw_text  # Fallback: return raw text if not found
                     # TODO: Configurable options for unresolved tokens (e.g., empty string, error, or keep as-is)
+                    resolved = token.raw_text  # Fallback: return raw text if not found
+                else:
+                    # Recursively evaluate the value if it contains invocations
+                    value_node = ASTNode(resolved)
+                    resolved = value_node.evaluate(context, trace_log)
                 resolved_string += resolved
                 # Log trace
                 trace_log[token.raw_text] = resolved

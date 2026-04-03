@@ -58,6 +58,27 @@ class TestMacroEngine(unittest.TestCase):
         # Weak definitions are appended to tail; evaluation runs left-to-right, so yellow (older weak) is checked first
         self.assertEqual(result, "The yellow car")
 
+    def test_escape_characters(self):
+        """Verify that escaped syntax characters are treated as literals."""
+        prompt = r"This is \<not a macro\>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, "This is <not a macro>")
+
+    def test_recursive_evaluation(self):
+        """Verify that key values containing other invocations are recursively evaluated."""
+        self.engine._parse_global_context(":subject:the <color> car\n:color:red")
+        prompt = "I see <subject>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, "I see the red car")
+
+    def test_recursive_evaluation_order_independence(self):
+        """Verify recursive evaluation works regardless of definition order."""
+        # Define color before subject
+        self.engine._parse_global_context(":color:blue\n:subject:the <color> car")
+        prompt = "Look at <subject>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, "Look at the blue car")
+
     # COMMENTED OUT: Tests below are for future implementation
     # def test_strong_shadowing(self):
     #     """Verify that a local strong definition overrides a global definition."""
