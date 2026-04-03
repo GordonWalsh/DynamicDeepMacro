@@ -32,7 +32,7 @@ class TestMacroEngine(unittest.TestCase):
         self.engine._parse_global_context(":color:blue\n:color:red")
         prompt = "The <color> car"
         result, trace = self.engine.generate(prompt)
-        # Should use the most recent (right-to-left in reversed stack) definition
+        # Should use the most recent strong definition in left-to-right stack order
         self.assertEqual(result, "The red car")
 
     def test_weak_definition_does_not_overwrite_strong(self):
@@ -51,11 +51,11 @@ class TestMacroEngine(unittest.TestCase):
         self.assertEqual(result, "The yellow car")
 
     def test_multiple_weak_definitions_first_wins(self):
-        """Verify that among multiple weak definitions, the rightmost (oldest to head) is used."""
+        """Verify that among multiple weak definitions, the first inserted (oldest) is used when no strong exists."""
         self.engine._parse_global_context(":color::yellow\n:color::green")
         prompt = "The <color> car"
         result, trace = self.engine.generate(prompt)
-        # Green is pushed later to head, so in reversed() iteration (tail->head), yellow is found first
+        # Weak definitions are appended to tail; evaluation runs left-to-right, so yellow (older weak) is checked first
         self.assertEqual(result, "The yellow car")
 
     # COMMENTED OUT: Tests below are for future implementation

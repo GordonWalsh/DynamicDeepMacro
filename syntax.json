@@ -34,7 +34,7 @@
           "syntax": ":[KEY_PATTERN]:[VALUE_PATTERN]",
           "example_literal": ":man:gentleman",
           "example_regex": ":/dark/:/ light/",
-          "behavior": "Searched right-to-left; overrides weaker definitions."
+          "behavior": "Searched left-to-right; overrides weaker definitions."
         },
         "BOUNDED_WEAK": {
           "syntax": ":[KEY_PATTERN]::[VALUE_PATTERN]",
@@ -85,12 +85,12 @@
       "STRENGTH_STRONG": {
         "syntax": ":[KEY]:[VALUE]",
         "description": "A single colon between KEY and VALUE markers.",
-        "behavior": "Pushed to the Tail of the Context Stack. Overrides weaker definitions. Evaluated first in right-to-left search."
+        "behavior": "Pushed to the Head of the Context Stack. Overrides weaker definitions. Evaluated first in left-to-right search."
       },
       "STRENGTH_WEAK": {
         "syntax": ":[KEY]::[VALUE]",
         "description": "Two colons between KEY and VALUE markers.",
-        "behavior": "Pushed to the Head of the Context Stack. Acts as a fallback. Evaluated last in right-to-left search."
+        "behavior": "Pushed to the Tail of the Context Stack. Acts as a fallback. Evaluated after strong definitions in left-to-right search."
       },
       "PATTERN_TYPE_REGEX": {
         "syntax": "/pattern/",
@@ -155,7 +155,7 @@
         "syntax": "<key>",
         "context": "Inline text.",
         "description": "A literal token key surrounded by angle brackets.",
-        "behavior": "Searches Context Stack Right-to-Left. Replaces token with resolved AST of matching definition.",
+        "behavior": "Searches Context Stack Left-to-Right. Replaces token with resolved AST of matching definition.",
         "example": "A <color> dog.",
         "outcome": "A brown dog."
       },

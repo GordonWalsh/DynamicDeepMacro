@@ -18,20 +18,20 @@ The engine uses a custom Orthogonal Syntax Matrix to parse, evaluate, and inject
 When generating or refactoring code, adhere strictly to these architectural constraints:
 
 ### Scope & Stack Management
-* **The Double-Ended Context Stack:** State definitions are managed in a `deque`. 
-  * Strong Definitions (`:`) push to the **Tail** (Right).
-  * Weak Definitions / Defaults (`::`) push to the **Head** (Left).
-* **Right-to-Left Traversal:** When searching for a variable definition, iterate backward through the context stack (`reversed(stack)`), ensuring Strong/Local definitions shadow Weak/Global ones.
+* **The Double-Ended Context Stack:** State definitions are managed in a `deque`.
+  * Strong Definitions (`:`) push to the **Head** (Left).
+  * Weak Definitions / Defaults (`::`) push to the **Tail** (Right).
+* **Left-to-Right Traversal:** When searching for a variable definition, iterate forward through the context stack (normal order), ensuring Strong/local definitions are checked before Weak/global defaults.
 * **Lexical Scoping:** Always push local scope markers/definitions when entering an AST node, and strictly `pop()` them when exiting, *unless* the node is invoked transparently (e.g., the `<|<Macro>>` Dummy Root).
 
 ### Execution Phasing
 An AST Node lifecycle must strictly follow this order:
 1. Push local arguments to Context.
-2. Apply Unbounded Pre-Patterns (execute Left-to-Right on the string, pulling patterns Right-to-Left from the stack).
+2. Apply Unbounded Pre-Patterns (execute Left-to-Right on the string, pulling patterns left-to-right from the stack in evaluation order).
 3. Resolve Multi-Value sequences (`{a|b|c}`, `$$` logic).
 4. Lex and Parse Bounded Tokens (`< >`) into child AST nodes.
 5. Recursively evaluate children and concatenate literal text.
-6. Apply Unbounded Post-Patterns (Left-to-Right on the string, Right-to-Left from the stack).
+6. Apply Unbounded Post-Patterns (Left-to-Right on the string, left-to-right evaluation from the stack).
 7. Pop local scope.
 
 ### The Trace State Object
@@ -67,5 +67,5 @@ When generating code for a new Pull Request, verify the following:
 - Document the expected `context_string` grammar in `_parse_global_context` for future maintainers.
 
 ## 7. When to Ask for Human Input
-- If behavior for nested conflicting regex substitution matches is unclear, ask for desired precedence (current test implies strong def wins in right-to-left order).
+- If behavior for nested conflicting regex substitution matches is unclear, ask for desired precedence (current test implies strong def wins in left-to-right stack order).
 - If converting this to production, clarify the placeholder in `_lex_string` must become stack-based balanced-delimiter parser.

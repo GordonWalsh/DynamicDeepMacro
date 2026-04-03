@@ -13,24 +13,24 @@ class Definition:
 
 class MacroContext:
     def __init__(self):
-        # Double-ended queue: Head = WEAK, Tail = STRONG
+        # Double-ended queue: Head = STRONG, Tail = WEAK
         self.stack: deque[Definition] = deque()
 
     def push(self, definition: Definition):
         if definition.strength == 'STRONG':
-            self.stack.append(definition)
-        else:
             self.stack.appendleft(definition)
+        else:
+            self.stack.append(definition)
 
     def pop_strong(self):
-        return self.stack.pop()
-
-    def pop_weak(self):
         return self.stack.popleft()
 
+    def pop_weak(self):
+        return self.stack.pop()
+
     def get_definitions(self, pattern_class: str) -> List[Definition]:
-        # Returns definitions in Right-to-Left priority (Strongest/Newest first)
-        return [d for d in reversed(self.stack) if d.pattern_class == pattern_class]
+        # Returns definitions in natural left-to-right priority (Strongest/Newest first)
+        return [d for d in self.stack if d.pattern_class == pattern_class]
 
 class ASTNode:
     def __init__(self, raw_text: str, is_transparent: bool = False):
@@ -46,7 +46,7 @@ class ASTNode:
         # (Scoping framework - currently bypassed for simple resolution)
         # added_strong, added_weak = self._push_local_args(self, context)
         
-        # 2. Apply Unbounded Pre-Patterns (Left-to-Right on string, Right-to-Left definition priority)
+        # 2. Apply Unbounded Pre-Patterns (Left-to-Right on string and definition order)
         # text = self._apply_unbounded(self.raw_text, context.get_definitions('PRE'))
         text = self.raw_text
         
@@ -73,7 +73,7 @@ class ASTNode:
                     for _ in range(added_weak): context.pop_weak()
                 """
                 # CURRENT IMPLEMENTATION: Simple bounded token resolution
-                # Resolve <key> by searching context stack right-to-left
+                # Resolve <key> by searching context stack left-to-right (strong first, weak fallback)
                 definitions = context.get_definitions('BOUNDED')
                 resolved = None
                 for d in definitions:
@@ -90,7 +90,7 @@ class ASTNode:
                 # Literal text passes through unchanged
                 resolved_string += token
 
-        # 5. Apply Unbounded Post-Patterns (Left-to-Right on string, Right-to-Left definition priority)
+        # 5. Apply Unbounded Post-Patterns (Left-to-Right on string and definition order)
         # final_string = self._apply_unbounded(resolved_string, context.get_definitions('POST'))
         final_string = resolved_string
         
@@ -105,7 +105,7 @@ class ASTNode:
         return final_string
 
     def _apply_unbounded(self, text: str, definitions: List[Definition]) -> str:
-        # Executes Left-to-Right sequentially using Right-to-Left prioritized definitions
+        # Executes Left-to-Right sequentially using left-to-right prioritized definitions
         current_text = text
         for d in definitions:
             if d.is_regex:
