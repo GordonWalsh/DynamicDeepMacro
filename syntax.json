@@ -1,0 +1,200 @@
+{
+  "MACRO_ENGINE_SYNTAX_SPECIFICATION": {
+    "1_CORE_DIRECTIVES": {
+      "ESCAPE_CHARACTER": {
+        "syntax": "\\",
+        "context": "Anywhere",
+        "description": "A single backslash preceding any syntax character.",
+        "behavior": "Prevents the lexer from interpreting the subsequent character as a syntax operator.",
+        "example": "Literal \\<bracket\\>",
+        "outcome": "Outputs `<bracket>` without initiating an AST node capture."
+      },
+      "INDEXED_BLOCK_ROUTER": {
+        "syntax": "^[ \\t]*#+[ \\t]*(.*?)[ \\t]*#+[ \\t]*$",
+        "context": "Top-level raw string inputs (prior to AST evaluation).",
+        "description": "A line starting and ending with one or more hash `#` characters, optionally surrounding a title, with optional whitespace padding.",
+        "behavior": "Splits multi-line strings into routed blocks. Accessed via positive (Preamble + Block) or negative (Block Only) integer routing.",
+        "example": "# Header 1 #\nText block here.",
+        "outcome": "Isolates 'Text block here.' for injection into the engine."
+      },
+      "LORA_WRAPPER": {
+        "syntax": "\\[group_name: <lora_string>\\]",
+        "context": "Top-level or inside AST nodes.",
+        "description": "Square brackets enclosing a literal group name, a colon, and the native ComfyUI `<lora:...>` string.",
+        "behavior": "Protects native ComfyUI syntax from macro evaluation, routes the payload to the Trace State Object under `group_name`, and strips the bracket wrapper for final output.",
+        "example": "[lighting: <lora:bright:1.0>]",
+        "outcome": "Final output: `<lora:bright:1.0>`. Trace Log: `lighting: ['<lora:bright:1.0>']`."
+      }
+    },
+    "2_STATE_MUTATIONS_DEFINITIONS": {
+      "ORTHOGONAL_MATRIX_RULES": "Definitions follow [CLASS][PATTERN_TYPE][STRENGTH] syntax. They must appear at the start of a parsed line or segment.",
+      "CLASS_PRE_PATTERN": {
+        "syntax": ":<",
+        "description": "A colon followed immediately by a left angle bracket.",
+        "behavior": "Unbounded Regex/Literal evaluated Left-to-Right against raw strings before AST lexing."
+      },
+      "CLASS_BOUNDED": {
+        "syntax": ":",
+        "description": "A single colon.",
+        "behavior": "Evaluated exclusively within `< >` AST macro boundaries."
+      },
+      "CLASS_POST_PATTERN": {
+        "syntax": ":>",
+        "description": "A colon followed immediately by a right angle bracket.",
+        "behavior": "Unbounded Regex/Literal evaluated Left-to-Right against flattened strings after AST resolution."
+      },
+      "STRENGTH_STRONG": {
+        "syntax": ":",
+        "description": "A single colon between the pattern and the value.",
+        "behavior": "Pushed to the Tail of the Context Stack (Evaluated First / Overrides)."
+      },
+      "STRENGTH_WEAK": {
+        "syntax": "::",
+        "description": "Two colons between the pattern and the value.",
+        "behavior": "Pushed to the Head of the Context Stack (Evaluated Last / Default)."
+      },
+      "PATTERN_TYPE_REGEX": {
+        "syntax": "/pattern/",
+        "description": "A string enclosed entirely by forward slashes.",
+        "behavior": "Parses the enclosed string as a Regular Expression. Valid for both the matching key/pattern and the replacement value."
+      },
+      "PATTERN_TYPE_LITERAL": {
+        "syntax": "literal_string",
+        "description": "Any string not entirely enclosed by forward slashes.",
+        "behavior": "Parses as an exact string match (for keys) or literal replacement (for values)."
+      },
+      "EXAMPLES": [
+        {
+          "syntax": ":man:gentleman",
+          "description": "Bounded, Strong, Literal Key, Literal Value.",
+          "outcome": "Overrides `<man>` to output `gentleman`."
+        },
+        {
+          "syntax": ":</dark/::/ light/",
+          "description": "Pre-pattern, Weak, Regex Key, Regex Value.",
+          "outcome": "Fallback pre-pattern replacing 'dark' with ' light'. Native regex escape sequences and group backreferences are fully supported during the substitution pass."
+        },
+        {
+          "syntax": ":man:/gentleman\\n/",
+          "description": "Bounded, Strong, Literal Key, Regex Value.",
+          "outcome": "Overrides `<man>` to output `gentleman` followed by a literal newline. The native python regex engine handles the `\\n` escape parsing automatically."
+        },
+        {
+          "syntax": ":>/\\s{2,}/: ",
+          "description": "Post-pattern, Strong, Regex Key, Literal Value.",
+          "outcome": "A cleanup post-pattern that finds multiple adjacent spaces and replaces them with a single space."
+        }
+      ]
+    },
+    "3_BOUNDED_INVOCATIONS": {
+      "STANDARD_INVOCATION": {
+        "syntax": "<key>",
+        "context": "Inline text.",
+        "description": "A literal token key surrounded by angle brackets.",
+        "behavior": "Searches Context Stack Right-to-Left. Replaces token with resolved AST of matching definition.",
+        "example": "A <color> dog.",
+        "outcome": "A brown dog."
+      },
+      "PARAMETERIZED_INVOCATION": {
+        "syntax": "<key|arg1:val1>",
+        "context": "Inline text.",
+        "description": "A key, followed by a pipe `|`, followed by argument definitions separated by pipes, enclosed in angle brackets.",
+        "behavior": "Pushes `arg1` as a STRONG definition to local scope, evaluates `<key>`, then pops `arg1`.",
+        "example": "<subject|color:red>",
+        "outcome": "Evaluates `subject` with `color` strictly defined as `red`."
+      },
+      "DEFAULT_PARAMETER_INVOCATION": {
+        "syntax": "<key|arg1::val1>",
+        "context": "Inline text.",
+        "description": "Same as parameterized, but using a double colon `::` for the argument definition.",
+        "behavior": "Pushes `arg1` as a WEAK definition to local scope.",
+        "example": "<subject|color::yellow>",
+        "outcome": "Evaluates `subject` with `color` as `yellow` ONLY IF no higher-priority definition exists."
+      },
+      "ATOMIC_ASSIGN_AND_RETURN": {
+        "syntax": "<key:value>",
+        "context": "Inline text.",
+        "description": "A literal key and literal value separated by a single colon, enclosed in angle brackets.",
+        "behavior": "Simultaneously pushes `key:value` as a STRONG definition (Tail of stack) and resolves the AST node to `value`.",
+        "example": "The <man:gentleman> arrived.",
+        "outcome": "Outputs 'The gentleman arrived' and registers `man:gentleman` as a strong definition for subsequent sibling nodes."
+      },
+      "ATOMIC_ASSIGN_DEFAULT_AND_RETURN": {
+        "syntax": "<key::value>",
+        "context": "Inline text.",
+        "description": "A literal key and literal value separated by a double colon, enclosed in angle brackets.",
+        "behavior": "Simultaneously pushes `key:value` as a WEAK definition (Head of stack) and resolves the AST node to `value`.",
+        "example": "The <man::guy> arrived.",
+        "outcome": "Outputs 'The guy arrived' and registers `man:guy` as a weak definition for subsequent sibling nodes."
+      },
+      "TRANSPARENT_BLOCK_DUMMY_ROOT": {
+        "syntax": "<|<MacroA>|<MacroB>>",
+        "context": "Inline text, wrapping multiple invocations.",
+        "description": "An opening angle bracket followed immediately by a pipe `|`, followed by macro invocations separated by pipes, closed by an angle bracket.",
+        "behavior": "The isolated `|` suppresses standard `ENTER_SCOPE`/`EXIT_SCOPE` markers. Macros share a continuous local scope block.",
+        "example": "<|<SetColors>|<DrawScene>>",
+        "outcome": "Definitions hoisted by `<SetColors>` remain active and accessible during `<DrawScene>` evaluation, popping only when the outer `< >` terminates."
+      }
+    },
+    "4_MULTI_VALUE_SEQUENCES": {
+      "STANDARD_RANDOM": {
+        "syntax": "{a|b|c}",
+        "context": "Inline text or definition values.",
+        "description": "Multiple string options separated by pipes `|`, enclosed in curly braces.",
+        "behavior": "Selects one option using the deterministic path-hashed PRNG.",
+        "example": "A {cat|dog}.",
+        "outcome": "A dog."
+      },
+      "QUANTITY_MODIFIER": {
+        "syntax": "{qty$$a|b|c}",
+        "context": "Start of a Multi-Value group.",
+        "description": "An integer followed by a double dollar sign `$$`, preceding the piped options inside curly braces.",
+        "behavior": "Selects `qty` number of options without replacement. Default separator is ', '.",
+        "example": "{2$$red|blue|green}",
+        "outcome": "red, green"
+      },
+      "CUSTOM_SEPARATOR": {
+        "syntax": "{qty$$sep$$a|b|c}",
+        "context": "Start of a Multi-Value group.",
+        "description": "An integer, `$$`, a literal string separator, `$$`, and the piped options.",
+        "behavior": "Selects `qty` options, joined strictly by `sep`.",
+        "example": "{2$$ and $$red|blue|green}",
+        "outcome": "red and blue"
+      },
+      "DISCRETE_SEQUENCE_GENERATOR": {
+        "syntax": "{start:stop:step$$...}",
+        "context": "Quantity modifier segment.",
+        "description": "Colon-separated integers preceding the `$$` in a multi-value group.",
+        "behavior": "Generates a discrete list of valid indices/quantities to be fed into the PRNG prior to item selection.",
+        "example": "{1:3$$red|blue|green}",
+        "outcome": "Randomly selects 1, 2, or 3 items from the pool."
+      }
+    },
+    "5_DEFERRED_STRETCH_FEATURES": {
+      "POSITIONAL_ARGUMENTS": {
+        "syntax": "<0>, <1>",
+        "status": "Deferred to V2",
+        "description": "Numeric digits enclosed in angle brackets.",
+        "behavior": "Accessing parameterized arguments by integer index rather than explicit key string."
+      },
+      "REGEX_CAPTURE_INTEROPERABILITY": {
+        "syntax": "\\1, (?P<name>...)",
+        "status": "Deferred to V2",
+        "description": "Native regex capture groups and backreferences used within macro boundaries.",
+        "behavior": "Seamless interoperability between macro argument scopes and native regex capture groups. For example, mapping named regex capture groups `(?P<name>...)` on a key pattern directly to local `<name>` invocations within the replacement value."
+      },
+      "INDEX_MASKING": {
+        "syntax": "{$idx$$qty$$sep$$...}",
+        "status": "Deferred to V2",
+        "description": "A leading integer (or range) prefixed with a dollar sign `$`, followed by standard quantity modifiers.",
+        "behavior": "Restricting the PRNG pool to specific indices of the provided options before selection."
+      },
+      "CONTEXT_APPEND_OPERATOR": {
+        "syntax": ":|",
+        "status": "Deferred to V2",
+        "description": "A colon followed by a pipe.",
+        "behavior": "Concatenating a new value to an existing key array rather than standard priority shadowing."
+      }
+    }
+  }
+}
