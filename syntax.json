@@ -27,41 +27,80 @@
       }
     },
     "2_STATE_MUTATIONS_DEFINITIONS": {
-      "ORTHOGONAL_MATRIX_RULES": "Definitions follow [CLASS][PATTERN_TYPE][STRENGTH] syntax. They must appear at the start of a parsed line or segment.",
+      "ORTHOGONAL_MATRIX_RULES": "Definitions follow [CLASS][KEY_PATTERN][STRENGTH][VALUE_PATTERN] syntax. CLASS and STRENGTH determine evaluation behavior; KEY_PATTERN and VALUE_PATTERN can each be either literal text or a regex (/pattern/). Definitions must appear at the start of a parsed line or segment.",
+      "SYNTAX_COMPOSITION_TABLE": {
+        "description": "Complete list of valid definition syntax patterns",
+        "BOUNDED_STRONG": {
+          "syntax": ":[KEY_PATTERN]:[VALUE_PATTERN]",
+          "example_literal": ":man:gentleman",
+          "example_regex": ":/dark/:/ light/",
+          "behavior": "Searched right-to-left; overrides weaker definitions."
+        },
+        "BOUNDED_WEAK": {
+          "syntax": ":[KEY_PATTERN]::[VALUE_PATTERN]",
+          "example_literal": "::color::blue",
+          "example_regex": "::/dark/::/ light/",
+          "behavior": "Used only when no strong definition exists for the key."
+        },
+        "PRE_PATTERN_STRONG": {
+          "syntax": ":<[KEY_PATTERN]:[VALUE_PATTERN]",
+          "example_literal": ":<old:new",
+          "example_regex": ":</dark/: light",
+          "behavior": "Applied left-to-right against raw input before AST lexing."
+        },
+        "PRE_PATTERN_WEAK": {
+          "syntax": ":<[KEY_PATTERN]::[VALUE_PATTERN]",
+          "example_literal": ":<old::new",
+          "example_regex": ":</dark/:: light",
+          "behavior": "Applied left-to-right against raw input, lower priority than strong."
+        },
+        "POST_PATTERN_STRONG": {
+          "syntax": ":>[KEY_PATTERN]:[VALUE_PATTERN]",
+          "example_literal": ":>old:new",
+          "example_regex": ":>/\\s{2,}/: ",
+          "behavior": "Applied left-to-right against final output after AST resolution."
+        },
+        "POST_PATTERN_WEAK": {
+          "syntax": ":>[KEY_PATTERN]::[VALUE_PATTERN]",
+          "example_literal": ":>old::new",
+          "example_regex": ":>/\\s{2,}/:: ",
+          "behavior": "Applied left-to-right against final output, lower priority than strong."
+        }
+      },
       "CLASS_PRE_PATTERN": {
         "syntax": ":<",
-        "description": "A colon followed immediately by a left angle bracket.",
-        "behavior": "Unbounded Regex/Literal evaluated Left-to-Right against raw strings before AST lexing."
+        "description": "A colon followed immediately by a left angle bracket. Marks unbounded pre-pattern evaluation.",
+        "behavior": "Applied Left-to-Right against raw strings before AST lexing."
       },
       "CLASS_BOUNDED": {
         "syntax": ":",
-        "description": "A single colon.",
+        "description": "A single colon. Marks bounded evaluation (applies only to tokens within `< >`).",
         "behavior": "Evaluated exclusively within `< >` AST macro boundaries."
       },
       "CLASS_POST_PATTERN": {
         "syntax": ":>",
-        "description": "A colon followed immediately by a right angle bracket.",
-        "behavior": "Unbounded Regex/Literal evaluated Left-to-Right against flattened strings after AST resolution."
+        "description": "A colon followed immediately by a right angle bracket. Marks unbounded post-pattern evaluation.",
+        "behavior": "Applied Left-to-Right against flattened strings after AST resolution."
       },
       "STRENGTH_STRONG": {
-        "syntax": ":",
-        "description": "A single colon between the pattern and the value.",
-        "behavior": "Pushed to the Tail of the Context Stack (Evaluated First / Overrides)."
+        "syntax": ":[KEY]:[VALUE]",
+        "description": "A single colon between KEY and VALUE markers.",
+        "behavior": "Pushed to the Tail of the Context Stack. Overrides weaker definitions. Evaluated first in right-to-left search."
       },
       "STRENGTH_WEAK": {
-        "syntax": "::",
-        "description": "Two colons between the pattern and the value.",
-        "behavior": "Pushed to the Head of the Context Stack (Evaluated Last / Default)."
+        "syntax": ":[KEY]::[VALUE]",
+        "description": "Two colons between KEY and VALUE markers.",
+        "behavior": "Pushed to the Head of the Context Stack. Acts as a fallback. Evaluated last in right-to-left search."
       },
       "PATTERN_TYPE_REGEX": {
         "syntax": "/pattern/",
-        "description": "A string enclosed entirely by forward slashes.",
-        "behavior": "Parses the enclosed string as a Regular Expression. Valid for both the matching key/pattern and the replacement value."
+        "description": "A string enclosed entirely by forward slashes. Applied to both KEY and VALUE independently.",
+        "behavior": "Parsed as a Regular Expression. Supports native Python regex syntax, backreferences, and named groups."
       },
       "PATTERN_TYPE_LITERAL": {
         "syntax": "literal_string",
-        "description": "Any string not entirely enclosed by forward slashes.",
-        "behavior": "Parses as an exact string match (for keys) or literal replacement (for values)."
+        "description": "Any string not enclosed by forward slashes. Applied to both KEY and VALUE independently.",
+        "behavior": "Exact string matching (for KEY) or literal replacement (for VALUE)."
       },
       "EXAMPLES": [
         {
@@ -70,19 +109,44 @@
           "outcome": "Overrides `<man>` to output `gentleman`."
         },
         {
-          "syntax": ":</dark/::/ light/",
+          "syntax": ":man::gentleman",
+          "description": "Bounded, Weak, Literal Key, Literal Value.",
+          "outcome": "Fallback: if no strong `:man:...` exists, `<man>` outputs `gentleman`."
+        },
+        {
+          "syntax": ":<dark: light",
+          "description": "Pre-pattern, Strong, Literal Key, Literal Value.",
+          "outcome": "Applied before AST lexing: replaces 'dark' with ' light' in raw input."
+        },
+        {
+          "syntax": ":<dark:: light",
+          "description": "Pre-pattern, Weak, Literal Key, Literal Value.",
+          "outcome": "Applied before AST lexing with lower priority than strong pre-patterns."
+        },
+        {
+          "syntax": ":</dark/:/ light/",
+          "description": "Pre-pattern, Strong, Regex Key, Regex Value.",
+          "outcome": "Regex pattern matching; replaces matched 'dark' with the literal string ' light'."
+        },
+        {
+          "syntax": ":/dark/::/dark themed/",
           "description": "Pre-pattern, Weak, Regex Key, Regex Value.",
-          "outcome": "Fallback pre-pattern replacing 'dark' with ' light'. Native regex escape sequences and group backreferences are fully supported during the substitution pass."
+          "outcome": "Regex matching with weak priority; useful as fallback before AST evaluation."
         },
         {
           "syntax": ":man:/gentleman\\n/",
           "description": "Bounded, Strong, Literal Key, Regex Value.",
-          "outcome": "Overrides `<man>` to output `gentleman` followed by a literal newline. The native python regex engine handles the `\\n` escape parsing automatically."
+          "outcome": "Overrides `<man>` to output `gentleman` followed by a newline."
         },
         {
           "syntax": ":>/\\s{2,}/: ",
           "description": "Post-pattern, Strong, Regex Key, Literal Value.",
-          "outcome": "A cleanup post-pattern that finds multiple adjacent spaces and replaces them with a single space."
+          "outcome": "Applied after AST resolution: collapses multiple spaces into single space."
+        },
+        {
+          "syntax": ":>/old/:: old",
+          "description": "Post-pattern, Weak, Regex Key, Literal Value.",
+          "outcome": "Applied after AST resolution with lower priority; acts as cleanup fallback."
         }
       ]
     },

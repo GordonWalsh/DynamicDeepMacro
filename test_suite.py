@@ -14,12 +14,49 @@ class TestMacroEngine(unittest.TestCase):
         self.assertEqual(result, prompt)
 
     def test_simple_token_replacement(self):
-        """Verify basic string replacement in literal text."""
+        """Verify basic bounded token replacement."""
         self.engine._parse_global_context(":old:new")
-        prompt = "This is old text"
+        prompt = "This is <old> text"
         result, trace = self.engine.generate(prompt)
-        # Should replace 'old' with 'new'
-        self.assertIn("new", result)
+        self.assertEqual(result, "This is new text")
+
+    def test_multiple_definitions(self):
+        """Verify multiple definitions can coexist and resolve correctly."""
+        self.engine._parse_global_context(":color:blue\n:animal:dog")
+        prompt = "A <color> <animal>"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, "A blue dog")
+
+    def test_strong_definition_overwrites_previous_strong(self):
+        """Verify that a later strong definition shadows an earlier strong definition."""
+        self.engine._parse_global_context(":color:blue\n:color:red")
+        prompt = "The <color> car"
+        result, trace = self.engine.generate(prompt)
+        # Should use the most recent (right-to-left in reversed stack) definition
+        self.assertEqual(result, "The red car")
+
+    def test_weak_definition_does_not_overwrite_strong(self):
+        """Verify that a weak definition does not override an earlier strong definition."""
+        self.engine._parse_global_context(":color:blue\n:color::yellow")
+        prompt = "The <color> car"
+        result, trace = self.engine.generate(prompt)
+        # Strong (blue) should win over weak (yellow)
+        self.assertEqual(result, "The blue car")
+
+    def test_weak_definition_acts_as_fallback(self):
+        """Verify that a weak definition provides a fallback when no strong definition exists."""
+        self.engine._parse_global_context(":color::yellow")
+        prompt = "The <color> car"
+        result, trace = self.engine.generate(prompt)
+        self.assertEqual(result, "The yellow car")
+
+    def test_multiple_weak_definitions_first_wins(self):
+        """Verify that among multiple weak definitions, the rightmost (oldest to head) is used."""
+        self.engine._parse_global_context(":color::yellow\n:color::green")
+        prompt = "The <color> car"
+        result, trace = self.engine.generate(prompt)
+        # Green is pushed later to head, so in reversed() iteration (tail->head), yellow is found first
+        self.assertEqual(result, "The yellow car")
 
     # COMMENTED OUT: Tests below are for future implementation
     # def test_strong_shadowing(self):
