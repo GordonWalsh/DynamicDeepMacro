@@ -7,7 +7,7 @@ The engine uses a custom Orthogonal Syntax Matrix to parse, evaluate, and inject
 
 **Current Implementation Status:** The core engine is implemented in `macro_engine.py` as a Python module with unit tests in `test_suite.py`. ComfyUI integration is planned but not yet implemented.
 
-**Unified Parsing Architecture (Future):** The engine currently treats global context definitions and prompt text as separate inputs, but they should be unified into a single parsing pipeline. Both are subject to the same definition syntax and escaping rules. The roadmap is to merge `_parse_global_context` and `_lex_string` into a single character-by-character lexer that produces a mixed AST containing definition nodes and literal/invocation nodes, allowing definitions to appear anywhere in the input stream and creating true local scoping where definitions pushed during evaluation of one subtree do not leak to siblings unless the parent node is transparent.
+**Unified Parsing Architecture (Future):** The engine currently treats global context definitions and prompt text as separate inputs, but they should be unified into a single parsing pipeline. Both are subject to the same definition syntax and escaping rules. The roadmap is to merge `_parse_global_context` and `_lex_string` into a single character-by-character lexer that produces a mixed AST containing definition nodes and literal/invocation nodes, allowing definitions to appear anywhere in the input stream and creating true local scoping where definitions pushed during evaluation of one subtree do not leak to siblings unless the parent node is transparent. For the current Token-to-AST parser implementation plan and milestone sequence, refer to `TOKEN_TO_AST_PLAN.md`.
 
 **Core Directives for AI Agents:**
 * Prioritize deterministic execution. Generative AI prompts require exact repeatability based on seed and tree path.
@@ -56,8 +56,8 @@ An AST Node lifecycle must strictly follow this order:
 ---
 
 ## 4. Top-Level Tasks for New PRs
-When generating code for a new Pull Request, verify the following:
-1. **Implement missing parser parts in `macro_engine.py`:**
+When generating code for a new Pull Request, verify the following; for the latest Token-to-AST parser milestones and implementation details, refer to `TOKEN_TO_AST_PLAN.md`.
+1. **Implement or migrate parser parts according to `TOKEN_TO_AST_PLAN.md`:**
    - `_parse_global_context` (context string syntax `:<`, `:`, `:>`).
    - `_lex_string` to return tokens+ASTNodes for `<...>` and `{...}` patterns.
    - `_push_local_args` to convert `<key|arg:val>` into context pushes.
@@ -70,9 +70,9 @@ When generating code for a new Pull Request, verify the following:
 - Keep test assertions precise (no partial/magic string expectations unless explicit semantic intent).
 
 ## 6. What to Explain in Code Comments
-- Explain each source of scoping effects (strong vs weak vs transparent) in `MacroContext` and `ASTNode._push_local_args` maps.
-- Document the expected `context_string` grammar in `_parse_global_context` for future maintainers.
+- Explain each source of scoping effects (strong vs weak vs transparent) in `MacroContext` and `ASTNode._push_local_args` maps, and keep `TOKEN_TO_AST_PLAN.md` aligned with the current parser design.
+- Document the expected context/unified parser grammar in the current parser implementation and keep `TOKEN_TO_AST_PLAN.md` in sync.
 
 ## 7. When to Ask for Human Input
 - If behavior for nested conflicting regex substitution matches is unclear, ask for desired precedence (current test implies strong def wins in left-to-right stack order).
-- If converting this to production, clarify the placeholder in `_lex_string` must become stack-based balanced-delimiter parser.
+- If converting this to production, clarify the placeholder in `_lex_string` must become a stack-based balanced-delimiter parser, as tracked in `TOKEN_TO_AST_PLAN.md`.

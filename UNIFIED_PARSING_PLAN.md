@@ -1,5 +1,7 @@
 # Unified Parsing Architecture Plan
 
+> Note: The current detailed Token-to-AST parser implementation plan is maintained in `TOKEN_TO_AST_PLAN.md`. Use that file as the authoritative implementation roadmap; this document captures architecture rationale and migration context.
+
 ## Executive Summary
 
 The macro engine currently uses a **dual pipeline** architecture where definition parsing and prompt parsing are separate phases. This plan outlines the transition to a **single unified pipeline** that treats both definitions and literal text as first-class components of a mixed AST, enabling true local scoping, definition composition, and seamless integration.
