@@ -2,3 +2,4 @@ debug.log
 _dev.code-workspace
 __pycache__/
 *.pyc
+debug.log

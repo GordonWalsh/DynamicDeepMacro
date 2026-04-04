@@ -1,6 +1,12 @@
 # Unified Parsing Architecture Plan
 
-> Note: The current detailed Token-to-AST parser implementation plan is maintained in `TOKEN_TO_AST_PLAN.md`. Use that file as the authoritative implementation roadmap; this document captures architecture rationale and migration context.
+> **Note on Current vs Target Architecture:** This document describes the *target* unified parsing architecture. The current implementation in `macro_engine.py` uses a dual-pipeline approach as described in the "Current Architecture" section below.
+> 
+> For **specification details** on the three-stage pipeline (Lexer, Parser, Evaluator) and their data contracts, refer to:
+> - [CORE_TYPES_AND_INTERFACES.md](CORE_TYPES_AND_INTERFACES.md) - Shared data types and subsystem contracts
+> - [LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md) - String → Token lexing specifications
+> - [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parser implementation
+> - [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String evaluation specifications
 
 ## Executive Summary
 

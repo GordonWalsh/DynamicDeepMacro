@@ -1,7 +1,14 @@
-# Token to AST Node Parser Implementation Plan
+# Parser Specification
+
+> **Note on Scope:** This document covers the **Parser** stage (Token → AST) of the three-stage processing pipeline. For comprehensive parser specifications including data structure contracts and interface guarantees, see [CORE_TYPES_AND_INTERFACES.md](CORE_TYPES_AND_INTERFACES.md). For implementation roadmap details and design decisions, see [UNIFIED_PARSING_PLAN.md](UNIFIED_PARSING_PLAN.md).
+>
+> **Three-Stage Pipeline:**
+> 1. [LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md) - String → Token
+> 2. PARSER_SPECIFICATION.md (this document) - Token → AST
+> 3. [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String
 
 ## Overview
-This plan outlines the methodical implementation of a Token-to-AST parser that converts the stream of `Token` objects from `lexer.py` into a meaningful Abstract Syntax Tree (AST) with nodes representing literals, definitions, invocations, and other semantic constructs. The parser will be built incrementally, with each milestone adding features while maintaining test coverage and clean architecture.
+This specification outlines the methodical implementation of a Token-to-AST parser that converts the stream of `Token` objects from the Lexer into a meaningful Abstract Syntax Tree (AST) with nodes representing literals, definitions, invocations, and other semantic constructs. The parser will be built incrementally, with each milestone adding features while maintaining test coverage and clean architecture.
 
 ## Core Architecture Principles
 - **Incremental Development**: Each milestone builds on the previous, with working code and tests at every step.
@@ -19,7 +26,6 @@ This plan outlines the methodical implementation of a Token-to-AST parser that c
 - `DefinitionNode`: Represents definition syntax (e.g., `:key:value` patterns).
 - `InvocationNode`: Represents bounded token invocations (e.g., `<key>` or `{choice}`).
 - Base `ASTNode` class with common properties (e.g., `node_type`, `raw_text`).
-    - Would this by like an `ASTNode` has a `NodeContent` field that can be filled by a `TextLiteral` or `Definition` or `Invocation`?
 
 **Architecture**:
 - Use dataclasses for immutable node structures.
@@ -31,13 +37,10 @@ This plan outlines the methodical implementation of a Token-to-AST parser that c
   - Subclassing AST node types (`LiteralNode`, `DefinitionNode`, `InvocationNode`) with shared base fields.
   - A single `ASTNode` wrapper with a typed `content` field carrying a union of literal/definition/invocation payloads.
   - For clarity and maintainability, the subclassed approach is preferred.
-- I think the nodes themselves don't have fields for a context deque or a PRNG object since those are elements of the evaluation lifecycle and the node objects themselves are just containers for meanings.
-    - I think that the outer `ASTNode` frame does need to have a field for `isTransparent` though, since that's derived from the parsed syntax and important to the evaluation lifecycle.
 
 **Implementation**:
 - Create `ast_nodes.py` module with node definitions.
 - Import `Token` from `lexer.py` for type hints.
-    - TODO I'm not sure of the typical structure for python projects like this, would we want to have all of our "data object" classes defined in a single central file?
 
 **Tests**:
 - Unit tests for node creation and equality.
@@ -108,10 +111,6 @@ This plan outlines the methodical implementation of a Token-to-AST parser that c
 - Parse nested tokens inside bounded tokens (e.g., `<outer <inner>>`).
 - Create tree structures where `InvocationNode` can have child nodes.
 - Handle multiple boundary types (`< >`, `{ }`).
-    - If the content string is not "flat", ie it contains any sort of boundary markers, then it should be sent to the lexer first.
-        - TODO not sure if it's better to run some fast checks in regex for the possible existance of a bounded token (ie match to `<startMarker>.*<endMarker>`) before sending it away, or just directly send it to the lexer to send it to get parsed as an `ASTNode` to get evaluated back as a (trusted) flat string literal.
-            - For the sake of avoiding closed loop cycling, if a post-pattern caused that `ASTNode` evaluation to come back with a valid bounded token inside, should it still be treated as a flat literal or should it get lexed-parsed-evaluated until no internal syntax?
-                - TODO Would it make sense to add a "Safe-mode" lane-gutter switch that would enable or disable "probable" safety checks like this, so a basic mistake wouldn't cause catastrophic meltdown while an advanced user could still say "I know what I asked for and give me exactly that". The evaluation still being subject to a maximum node-hits evaluation cap so it wouldn't lock up forever.
 
 **Architecture**:
 - Recursive parsing: When encountering a bounded token, recursively parse its content.
@@ -141,8 +140,6 @@ This plan outlines the methodical implementation of a Token-to-AST parser that c
 
 **Architecture**:
 - `PromptEngine` now: lex → parse → evaluate AST.
-- Maintain backward compatibility where possible.
-    - There is no backward to be compatible to, this is a fresh project from scratch.
 
 **Implementation**:
 - Update `macro_engine.py` to import and use `parser.py`.
@@ -203,3 +200,13 @@ This plan outlines the methodical implementation of a Token-to-AST parser that c
 **Documentation**:
 - Complete API documentation.
 - User guide for the unified parser.
+
+---
+
+## Related Documentation
+
+- [CORE_TYPES_AND_INTERFACES.md](CORE_TYPES_AND_INTERFACES.md) - ASTNode and Definition specifications
+- [LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md) - String → Token lexing
+- [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String evaluation
+- [UNIFIED_PARSING_PLAN.md](UNIFIED_PARSING_PLAN.md) - Architecture strategy and rationale
+- [.github/copilot-instructions.md](.github/copilot-instructions.md) - Project context and agent guidelines

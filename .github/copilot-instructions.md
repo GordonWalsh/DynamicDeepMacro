@@ -7,7 +7,14 @@ The engine uses a custom Orthogonal Syntax Matrix to parse, evaluate, and inject
 
 **Current Implementation Status:** The core engine is implemented in `macro_engine.py` as a Python module with unit tests in `test_suite.py`. ComfyUI integration is planned but not yet implemented.
 
-**Unified Parsing Architecture (Future):** The engine currently treats global context definitions and prompt text as separate inputs, but they should be unified into a single parsing pipeline. Both are subject to the same definition syntax and escaping rules. The roadmap is to merge `_parse_global_context` and `_lex_string` into a single character-by-character lexer that produces a mixed AST containing definition nodes and literal/invocation nodes, allowing definitions to appear anywhere in the input stream and creating true local scoping where definitions pushed during evaluation of one subtree do not leak to siblings unless the parent node is transparent. For the current Token-to-AST parser implementation plan and milestone sequence, refer to `TOKEN_TO_AST_PLAN.md`.
+**Unified Parsing Architecture (Future):** The engine currently treats global context definitions and prompt text as separate inputs, but they should be unified into a single parsing pipeline. Both are subject to the same definition syntax and escaping rules. The roadmap is to merge `_parse_global_context` and `_lex_string` into a single character-by-character lexer that produces a mixed AST containing definition nodes and literal/invocation nodes, allowing definitions to appear anywhere in the input stream and creating true local scoping where definitions pushed during evaluation of one subtree do not leak to siblings unless the parent node is transparent. For the current Token-to-AST parser implementation plan and milestone sequence, refer to `PARSER_SPECIFICATION.md`.
+
+**Specifications and Documentation:** The macro engine is documented across specialized specification files:
+- [CORE_TYPES_AND_INTERFACES.md](../CORE_TYPES_AND_INTERFACES.md) - Shared data types and subsystem contracts (Token, ASTNode, Definition, MacroContext)
+- [LEXER_SPECIFICATION.md](../LEXER_SPECIFICATION.md) - String → Token lexing specs (escape sequences, boundaries, definition lines)
+- [PARSER_SPECIFICATION.md](../PARSER_SPECIFICATION.md) - Token → AST parser implementation roadmap
+- [EVALUATOR_SPECIFICATION.md](../EVALUATOR_SPECIFICATION.md) - AST → String evaluation specs (7-phase lifecycle, context management)
+- [UNIFIED_PARSING_PLAN.md](../UNIFIED_PARSING_PLAN.md) - Architecture strategy and migration rationale
 
 **Core Directives for AI Agents:**
 * Prioritize deterministic execution. Generative AI prompts require exact repeatability based on seed and tree path.
@@ -18,6 +25,24 @@ The engine uses a custom Orthogonal Syntax Matrix to parse, evaluate, and inject
 * For regex patterns in definitions, wrap both key and value in `/ /` if they contain regex syntax; use escape characters only for syntax markers, not arbitrary backslashes.
 * When adding new tests, enable debug mode in `generate()` calls until the test passes to inspect stack and trace logs.
 * Only unescape characters that are part of the defined syntax (e.g., `\` before `:`, `<`, `>`, `/`); do not arbitrarily skip backslashed characters outside of syntax.
+
+## 1.1 Agent Operating Guidelines
+* Use raw Python strings (`r"..."`) for regex and escape-heavy test input strings.
+* Do not surround syntax markers with extraneous whitespace in tests or definitions.
+* Enable debug mode on new tests until they pass, then remove or disable debug output.
+* Do not delete existing comments unless they are directly replaced by equivalent documentation covering the same point.
+* Do not create new markdown files for changes or summaries unless explicitly requested.
+
+## 1.2 Comment and Concern Preservation
+When refactoring, migrating, or removing code that contains user comments, TODOs, or documented concerns:
+
+* **Acknowledge Explicit Concerns**: When removing comments containing complete thoughts, design decisions, TODOs, BUGs, or FIXMEs, explicitly acknowledge the removal in your chat response and explain how/where the concern was addressed (e.g., migrated to spec documentation, tracked as future work, resolved by implementation).
+* **Document Migrations**: If a comment's core thought is rewording/relocating (e.g., moving to specification docs), a brief note in the response that the concern was migrated is sufficient.
+* **Ambiguity Resolution**: When uncertain whether a comment is substantial, mention the removal in chat rather than silently deleting it. It's always safe to ask for clarification before removing.
+* **Preserve Rationale**: Comments often capture decision rationale, edge case considerations, or alternative approaches. Future developers/agents rely on this history to understand why design choices were made.
+* **Recovery**: While version history allows recovery, removals must be *known* to be discovered. Silent removal = lost knowledge.
+
+**Example Response**: "Removed TODO about safe-mode switching (Milestone 4 comment) — this is tracked in PARSER_SPECIFICATION.md Milestone 6 under Error Handling as a future enhancement, with MAX_EVAL_DEPTH mentioned in EVALUATOR_SPECIFICATION.md."
 
 ---
 
@@ -56,8 +81,8 @@ An AST Node lifecycle must strictly follow this order:
 ---
 
 ## 4. Top-Level Tasks for New PRs
-When generating code for a new Pull Request, verify the following; for the latest Token-to-AST parser milestones and implementation details, refer to `TOKEN_TO_AST_PLAN.md`.
-1. **Implement or migrate parser parts according to `TOKEN_TO_AST_PLAN.md`:**
+When generating code for a new Pull Request, verify the following; for the latest Token-to-AST parser milestones and implementation details, refer to `PARSER_SPECIFICATION.md`.
+1. **Implement or migrate parser parts according to `PARSER_SPECIFICATION.md`:**
    - `_parse_global_context` (context string syntax `:<`, `:`, `:>`).
    - `_lex_string` to return tokens+ASTNodes for `<...>` and `{...}` patterns.
    - `_push_local_args` to convert `<key|arg:val>` into context pushes.
@@ -70,9 +95,9 @@ When generating code for a new Pull Request, verify the following; for the lates
 - Keep test assertions precise (no partial/magic string expectations unless explicit semantic intent).
 
 ## 6. What to Explain in Code Comments
-- Explain each source of scoping effects (strong vs weak vs transparent) in `MacroContext` and `ASTNode._push_local_args` maps, and keep `TOKEN_TO_AST_PLAN.md` aligned with the current parser design.
-- Document the expected context/unified parser grammar in the current parser implementation and keep `TOKEN_TO_AST_PLAN.md` in sync.
+- Explain each source of scoping effects (strong vs weak vs transparent) in `MacroContext` and `ASTNode._push_local_args` maps, and keep `PARSER_SPECIFICATION.md` aligned with the current parser design.
+- Document the expected context/unified parser grammar in the current parser implementation and keep `PARSER_SPECIFICATION.md` in sync.
 
 ## 7. When to Ask for Human Input
 - If behavior for nested conflicting regex substitution matches is unclear, ask for desired precedence (current test implies strong def wins in left-to-right stack order).
-- If converting this to production, clarify the placeholder in `_lex_string` must become a stack-based balanced-delimiter parser, as tracked in `TOKEN_TO_AST_PLAN.md`.
+- If converting this to production, clarify the placeholder in `_lex_string` must become a stack-based balanced-delimiter parser, as tracked in `PARSER_SPECIFICATION.md`.
