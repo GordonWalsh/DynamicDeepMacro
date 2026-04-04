@@ -7,7 +7,7 @@ Also handles definition syntax parsing for context initialization.
 import re
 from typing import List, Optional
 from evaluator import Definition
-
+from core_engine import ASTNode, Token
 
 def unescape(text: str) -> str:
     """Unescape syntax characters in text.
@@ -59,6 +59,26 @@ def is_regex_pattern(text: str) -> bool:
         idx -= 1
     return backslashes % 2 == 0
 
+def parse_token_to_ast_node(token: Token) -> Optional[ASTNode]:
+    """Parse a single Token into an ASTNode.
+    
+    Detects Token types based on marker_type and processes accordingly
+    
+    Args:
+        token: Token to parse"""
+    
+
+def parse_invocation(contents: str) -> Optional[ASTNode]:
+    """Parse the contents of a bounded token as a macro invocation.
+
+    Args:
+        contents: String inside the bounded token (e.g. <...>)
+        
+    Returns:
+        ASTNode representing the macro invocation, or None if parsing fails.
+    """
+    # Placeholder: just create a simple ASTNode with raw_text set to contents and no children.
+    return ASTNode(raw_text=contents, content_parts=[])
 
 def parse_definition_line(line: str) -> Optional[Definition]:
     """Parse a single definition line into a Definition object.
@@ -138,6 +158,7 @@ def parse_definition_line(line: str) -> Optional[Definition]:
 
 
 def parse_global_context(context_string: str) -> List[Definition]:
+    # TODO this is a legacy function that should be replaced by the Token -> ASTNode parser.
     """Parse all definition lines from a context string.
     
     Extracts all definition lines (starting with :) and parses them

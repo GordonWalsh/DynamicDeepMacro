@@ -15,7 +15,7 @@ Abstract Syntax Tree (AST)
     ↓ [EVALUATOR]
 Final String Output
 ```
-
+TODO objects are defined in `core_engine.py`
 This document specifies the data structures passed between stages and the invariants guaranteed by each subsystem.
 
 ## Stage 1→2 Interface: Lexer Output (Token Objects)
@@ -29,20 +29,14 @@ The Lexer produces a sequence of Token objects representing raw-string primitive
 **Purpose:** Represents an atomic unit identified by the character-by-character lexing process.
 
 **Fields:**
-- `token_type` (str): Category of token
-  - `'LITERAL'`: Raw text between boundaries
-  - `'ESCAPED_CHAR'`: Single character escaped with `\`
-  - `'BOUNDED_OPEN'`: Start of `< >` boundary
-  - `'BOUNDED_CLOSE'`: End of `< >` boundary
-  - `'DEFINITION_LINE'`: Text starting with `:` (definition syntax)
 - `value` (str): Unprocessed token content
 - `position` (int): Character offset in input string
 - `length` (int): Number of characters consumed
+TODO is length or endpoint better?
+- TODO boundary Tuple of str
 
 **Invariants:**
 - All syntax characters (`<`, `>`, `\`, `:`, `/`) appearing in LITERAL tokens are unescaped
-- ESCAPED_CHAR tokens contain exactly one character (the escaped character itself)
-- DEFINITION_LINE tokens are complete lines (including newline if present in input)
 - Tokens appear in source order; concatenating all token values reconstructs input
 
 ---
@@ -58,18 +52,20 @@ The Parser produces an Abstract Syntax Tree (AST) where each node represents a s
 **Purpose:** Represents a semantic unit for evaluation, with content that may contain nested nodes.
 
 **Attributes:**
+TODO is this using different classes as different node types, or handled by a field/content difference?
 - `node_type` (str): Semantic category
   - `'LITERAL'`: Plain text (literal string from LITERAL tokens)
   - `'DEFINITION'`: Definition directive (parsed from DEFINITION_LINE tokens)
   - `'INVOCATION'`: Macro invocation (`< >` boundaries)
-  - `'ROOT'`: Top-level container (transparent, no scope)
 - `raw_text` (str): Original text before evaluation
-- `is_transparent` (bool): Whether scope changes affect siblings (for ROOT nodes)
+- `is_transparent` (bool): Whether scope changes affect siblings
 - `content_parts` (List[Union[str, ASTNode]]): Mixed literal text and nested nodes
+  TODO is parts or children a better description
 - `metadata` (dict): Node-specific data (e.g., definition details, invocation parameters)
+  TODO the "metadata" is describing more of a payload than a metadata
 
 **Invariants:**
-- ROOT node is transparent (is_transparent=True)
+TODO still TBD on how to handle/place literals
 - All child nodes are either literal strings or ASTNode objects
 - Concatenating all literal parts (excluding nodes) preserves whitespace and newlines
 - Each Definition node is self-contained (key, value, pattern_class, strength)
@@ -118,14 +114,11 @@ The Evaluator maintains a context stack during AST traversal.
 - `push(definition: Definition) → None`: Add definition based on strength
   - Strong definitions append to left (HEAD)
   - Weak definitions append to right (TAIL)
-- `pop_strong() → Definition`: Remove most recent strong definition
-- `pop_weak() → Definition`: Remove oldest weak definition
+REMOVED `pop_strong` and `pop_weak`. There is not need for these as individual functions, at least so far.
 - `get_definitions(pattern_class: str) → List[Definition]`: Return definitions matching pattern_class in priority order (left-to-right)
 
 **Invariants:**
 - Left-to-right traversal of deque always checks strong definitions before weak
-- pop_strong() removes the leftmost definition pushed as STRONG
-- pop_weak() removes the rightmost definition pushed as WEAK
 - get_definitions() returns definitions in priority order (strong first, then weak)
 
 ---
@@ -140,8 +133,7 @@ The Evaluator maintains a context stack during AST traversal.
 
 **Guarantees:**
 1. Character-by-character processing with no lookahead ambiguity
-2. All escaped syntax characters are unescaped in LITERAL tokens
-3. ESCAPED_CHAR tokens contain single characters only
+2. Escape characters and following character are preserved as-is
 4. Tokens are in source order and reconstruct input when concatenated
 5. No information loss (all input characters appear in output)
 
@@ -149,16 +141,14 @@ The Evaluator maintains a context stack during AST traversal.
 
 ### Parser Promises (Token → AST)
 
-**Input:** Sequence of Token objects
+**Input:** Token object
 
 **Output:** Rooted ASTNode tree (ROOT node at top, children as nested nodes)
 
 **Guarantees:**
-1. ROOT node is transparent (is_transparent=True)
-2. DEFINITION tokens are parsed into DEFINITION nodes with Definition metadata
-3. LITERAL tokens combined into LITERAL nodes
-4. BOUNDED_OPEN/CLOSE pairs create INVOCATION nodes
-5. All definitions are parsed (key/value unescaped, regex detected)
+2. Unbounded tokens are parsed into DEFINITION nodes with Definition metadata or into literal text (TODO raw or as a Node?)
+4. Bounded token pairs create INVOCATION nodes
+5. All definitions are parsed (key/value unescaped, regex detected), with syntax characters stripped
 
 **See:** PARSER_SPECIFICATION.md for detailed specifications
 
@@ -207,5 +197,5 @@ The Evaluator maintains a context stack during AST traversal.
 - [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parsing roadmap
 - [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - (Future) Detailed parser specs
 - [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String evaluation details
-- [UNIFIED_PARSING_PLAN.md](UNIFIED_PARSING_PLAN.md) - Architecture strategy and rationale
+- [UNIFIED_PROCESS_PLAN.md](UNIFIED_PROCESS_PLAN.md) - Architecture strategy and rationale
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - Project context and agent guidelines

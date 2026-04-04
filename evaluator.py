@@ -6,60 +6,8 @@ macros resolved, definitions applied, and patterns substituted.
 """
 
 import re
-from collections import deque
-from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
-
-
-@dataclass
-class Definition:
-    pattern_class: str  # 'PRE', 'BOUNDED', 'POST'
-    strength: str       # 'STRONG', 'WEAK'
-    key_is_regex: bool
-    value_is_regex: bool
-    key: str
-    value: str
-
-
-class MacroContext:
-    """Double-ended context stack for definition scope management.
-    
-    Maintains definitions in a deque with strong definitions at HEAD (left)
-    and weak definitions at TAIL (right). Left-to-right traversal ensures
-    strong definitions are checked before weak ones, implementing priority-based
-    lookup and lexical scoping.
-    """
-    
-    def __init__(self):
-        # Double-ended queue: Head = STRONG, Tail = WEAK
-        self.stack: deque[Definition] = deque()
-
-    def push(self, definition: Definition):
-        """Add definition to context stack based on strength.
-        
-        Strong definitions push to HEAD (left) and override weak definitions.
-        Weak definitions push to TAIL (right) and serve as fallbacks.
-        """
-        if definition.strength == 'STRONG':
-            self.stack.appendleft(definition)
-        else:
-            self.stack.append(definition)
-
-    def pop_strong(self) -> Definition:
-        """Remove most recent strong definition from HEAD."""
-        return self.stack.popleft()
-
-    def pop_weak(self) -> Definition:
-        """Remove oldest weak definition from TAIL."""
-        return self.stack.pop()
-
-    def get_definitions(self, pattern_class: str) -> List[Definition]:
-        """Get all definitions of a pattern class in priority order (left-to-right).
-        
-        Returns definitions in natural iteration order where strong definitions
-        (at HEAD) are encountered before weak definitions (at TAIL).
-        """
-        return [d for d in self.stack if d.pattern_class == pattern_class]
+from typing import List, Dict
+from core_engine import MacroContext, ASTNode, Definition
 
 
 def apply_unbounded_patterns(text: str, definitions: List[Definition]) -> str:
@@ -154,21 +102,3 @@ def evaluate_ast_node(node: 'ASTNode', context: MacroContext, trace_log: Dict) -
     return final_string
 
 
-class ASTNode:
-    """Abstract Syntax Tree node representing a semantic unit.
-    
-    Pure semantic container for holding parsed structure without runtime state.
-    Evaluation is handled by separate evaluate_ast_node() function.
-    """
-    
-    def __init__(self, raw_text: str, is_transparent: bool = False, content_parts: Optional[List] = None):
-        self.raw_text = raw_text
-        self.is_transparent = is_transparent
-        self.content_parts = content_parts if content_parts is not None else []
-    
-    def evaluate(self, context: MacroContext, trace_log: Dict) -> str:
-        """Evaluate this node and return resolved string.
-        
-        Delegates to the evaluate_ast_node() function for the actual evaluation logic.
-        """
-        return evaluate_ast_node(self, context, trace_log)

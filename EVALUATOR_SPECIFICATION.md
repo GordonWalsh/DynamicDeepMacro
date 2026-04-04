@@ -73,6 +73,7 @@ Result: "bright sky with bright clouds"
 **Action:** Identify and parse `< >` boundaries into child invocation nodes.
 
 **Details:**
+- Handled by lexer and parser functions
 - Scan transformed text for `< >` boundaries
 - For each boundary pair:
   - Extract content (may contain nested boundaries)
@@ -155,7 +156,7 @@ Result: "Generate a dark mage"
 **Details:**
 - Pop strong_count strong definitions (from Phase 1)
 - Pop weak_count weak definitions (from Phase 1)
-- Only for non-transparent nodes (ROOT is transparent)
+- Only for non-transparent nodes
 
 **Current Status:** Placeholder; phase not yet implemented
 
@@ -208,6 +209,7 @@ Unbounded patterns are applied sequentially to the full text using the following
    **Literal Key + Regex Value:**
    ```python
    # Find all occurrences of literal key, replace with regex-evaluated value
+   # Outsources handling of escape sequences and such to the regex engine
    # (Note: This is less common and may require custom implementation)
    result = custom_replace(definition.key, definition.value, text)
    ```
@@ -227,27 +229,27 @@ Unbounded patterns are applied sequentially to the full text using the following
 - Creates a composition: `D1(D2(...Dn(input)...))`
 
 ### Example: Composed Substitutions
-
+TODO Why not replace the `/  /  /` strings with definition syntax?
 ```
 Input: "The quick brown fox"
 
 Context:
   strong D1: /quick/slow/      (regex)
   strong D2: /brown/gray/      (regex)
-  weak   D3: /fox/dog/         (regex, fallback)
+  weak   D3: /quick/fast/         (regex, fallback)
 
 Evaluation:
   Step 1: "The quick brown fox" → (apply D1) → "The slow brown fox"
   Step 2: "The slow brown fox" → (apply D2) → "The slow gray fox"
-  Step 3: "The slow gray fox" → (apply D3) → "The slow gray dog"
+  Step 3: "The slow gray fox" → (apply D3) → "The slow gray fox" (already replaced quick, so this step doesn't change the string)
   
-Result: "The slow gray dog"
+Result: "The slow gray fox"
 ```
 
 ---
 
 ## Context Stack Management
-
+TODO Add description of other elements of context
 ### MacroContext During Evaluation
 
 The MacroContext is a double-ended deque that maintains definition priority during evaluation.
@@ -272,12 +274,12 @@ TAIL (weak, lower priority)
 
 ### Scoping Rules
 
-**Transparent Nodes (ROOT):**
+**Transparent Nodes:**
 - Do not create scope boundaries
 - Definitions pushed by children leak to siblings
 - Allows global context to be shared
 
-**Opaque Nodes (INVOCATION):**
+**Opaque Nodes:**
 - Do create scope boundaries
 - Definitions pushed in Phase 1 are popped in Phase 6
 - Siblings do not see child definitions
@@ -319,6 +321,7 @@ Result: "cat dog"
 When an INVOCATION node's raw_text is evaluated:
 
 1. **Lookup:** Search context stack for a definition matching the raw_text
+   TODO the strong-weak distinction naturally happens by how they are added, just search left-to-right
    - Strong definitions checked first (left-to-right)
    - Weak definitions checked as fallback
    - First match wins
@@ -367,8 +370,9 @@ The Evaluator ensures deterministic, repeatable execution:
 
 ## Current Implementation Status
 
-### Implemented in `macro_engine.py`
+### Implemented in `macro_engine.py` TODO not any more
 
+TODO evaluate will be a standalone function, with ASTNode.evaluate() just being a helper.
 - **ASTNode.evaluate():** Core 7-phase lifecycle
   - Phase 1: Placeholder (no local args yet)
   - Phase 2: _apply_unbounded(text, 'PRE') fully implemented
@@ -406,5 +410,5 @@ The Evaluator ensures deterministic, repeatable execution:
 - [CORE_TYPES_AND_INTERFACES.md](CORE_TYPES_AND_INTERFACES.md) - ASTNode and MacroContext specifications
 - [LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md) - String → Token lexing
 - [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parsing
-- [UNIFIED_PARSING_PLAN.md](UNIFIED_PARSING_PLAN.md) - Architecture strategy and rationale
+- [UNIFIED_PROCESS_PLAN.md](UNIFIED_PROCESS_PLAN.md) - Architecture strategy and rationale
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - Project context and agent guidelines

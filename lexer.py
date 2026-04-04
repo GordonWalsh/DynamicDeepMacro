@@ -14,43 +14,11 @@ Core Architecture:
 """
 
 import re
-from collections import deque, defaultdict
-from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
-
+from collections import defaultdict
+from typing import List, Tuple
+from core_engine import Token
 
 SYNTAX_CHARACTERS = r'\\:/<>{}'
-
-
-@dataclass
-class Token:
-    """
-    Represents a lexed token: either a bounded token or a literal text span.
-    
-    Attributes:
-        start_idx (int): Index of opening marker (or start of literal) in original text
-        end_idx (int): Index of closing marker (or end of literal) in original text
-        marker_type (Tuple[str, str]): (start_marker, end_marker) tuple for bounded tokens,
-                                       ('', '') for literal text spans
-        text (str): Complete token text (with markers for bounded tokens, plain text for literals)
-    """
-    start_idx: int
-    end_idx: int
-    marker_type: Tuple[str, str]
-    text: str
-    
-    def __eq__(self, other):
-        """
-        Compare tokens based on text and marker_type only.
-        
-        This allows test assertions to ignore start/end indices, which are
-        metadata for internal tracking rather than semantic token properties.
-        """
-        if isinstance(other, Token):
-            return self.text == other.text and self.marker_type == other.marker_type
-        return False
-
-
 
 def lex_with_boundaries(text: str, boundaries: List[Tuple[str, str]] = [('{', '}'), ('<', '>')]) -> List[Token]:
     r"""

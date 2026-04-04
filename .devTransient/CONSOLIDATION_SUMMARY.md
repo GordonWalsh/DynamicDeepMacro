@@ -9,7 +9,7 @@ This summary documents the consolidation of tokenizing and lexing specifications
 
 1. **[LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md)** (NEW)
    - **Purpose:** Authoritative single source for all lexing and tokenizing specifications
-   - **Scope:** Covers both current implementation (`macro_engine.py`) and planned future architecture (from `UNIFIED_PARSING_PLAN.md`)
+   - **Scope:** Covers both current implementation (`macro_engine.py`) and planned future architecture (from `UNIFIED_PROCESS_PLAN.md`)
    - **Contents:**
      - Current implementation status
      - Core components (Definition, MacroContext, ASTNode classes)
@@ -25,7 +25,7 @@ This summary documents the consolidation of tokenizing and lexing specifications
    - **Location:** New section after "Unified Parsing Architecture (Future)" describing specifications as consolidated resource
    - **Change:** Directs all lexing-related questions to central specification file
    
-3. **[UNIFIED_PARSING_PLAN.md](UNIFIED_PARSING_PLAN.md)** (UPDATED)
+3. **[UNIFIED_PROCESS_PLAN.md](UNIFIED_PROCESS_PLAN.md)** (UPDATED)
    - **Added:** Prominent note distinguishing current vs. target architecture
    - **Location:** New "Note on Current vs Target Architecture" blockquote at top of document
    - **Change:** Clarifies this document describes target unified architecture, not current dual-pipeline state
@@ -36,7 +36,7 @@ This summary documents the consolidation of tokenizing and lexing specifications
 ### Specification Drift
 Before consolidation, specifications were scattered across multiple files with inconsistencies:
 - `copilot-instructions.md`: Referenced "character-by-character lexer" and "pushdown automaton"
-- `UNIFIED_PARSING_PLAN.md`: Described target unified architecture without noting it's future
+- `UNIFIED_PROCESS_PLAN.md`: Described target unified architecture without noting it's future
 - `macro_engine.py`: Contains detailed implementation with inline comments and TODOs
 - `lexer.py`: Contains extracted code with different architectural comments
 - No authoritative source for what's current vs. planned
@@ -58,7 +58,7 @@ LEXER_SPECIFICATION.md (Top: Authoritative specifications)
 ├─ All lexing rules and semantics
 └─ Phase 1-4 roadmap with priorities
 
-UNIFIED_PARSING_PLAN.md (Strategy: Why we're moving to unified approach)
+UNIFIED_PROCESS_PLAN.md (Strategy: Why we're moving to unified approach)
 ├─ Current architecture (dual pipeline)
 ├─ Target architecture (unified pipeline)
 ├─ Implementation roadmap (phases 1-5)
@@ -91,7 +91,7 @@ specifications and includes current vs planned architecture, design rationale, a
 phase priorities.
 ```
 
-### UNIFIED_PARSING_PLAN.md
+### UNIFIED_PROCESS_PLAN.md
 ```
 Note on Current vs Target Architecture: This document describes the *target* unified 
 parsing architecture. The current implementation in macro_engine.py uses a dual-pipeline 
@@ -165,13 +165,13 @@ and scoping rules, refer to LEXER_SPECIFICATION.md.
 1. Update specifications in `LEXER_SPECIFICATION.md` first
 2. Update implementation code comments to reference spec section
 3. Update `PARSER_SPECIFICATION.md` if implementation roadmap changes
-4. Update strategy/rationale in `UNIFIED_PARSING_PLAN.md` if architecture changes
+4. Update strategy/rationale in `UNIFIED_PROCESS_PLAN.md` if architecture changes
 
 ## Verification Checklist
 
 - [x] LEXER_SPECIFICATION.md created with comprehensive specs
 - [x] copilot-instructions.md updated with cross-reference
-- [x] UNIFIED_PARSING_PLAN.md updated with architecture note and cross-reference
+- [x] UNIFIED_PROCESS_PLAN.md updated with architecture note and cross-reference
 - [x] All files reference LEXER_SPECIFICATION.md correctly
 - [x] Current implementation documented separately from future plans
 - [x] All specification sections include examples and semantics
