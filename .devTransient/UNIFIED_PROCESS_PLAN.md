@@ -10,8 +10,8 @@
 
 ## Executive Summary
 
-The macro engine currently uses a **dual pipeline** architecture where definition parsing and prompt parsing are separate phases. This plan outlines the transition to a **single unified pipeline** that treats both definitions and literal text as first-class components of a mixed AST, enabling true local scoping, definition composition, and seamless integration.
-
+The preliminary macro engine currently uses a **dual pipeline** architecture where definition parsing and prompt parsing are separate phases. This plan outlines the transition to a **single unified pipeline** that treats both definitions and literal text as first-class components of a mixed AST, enabling true local scoping, definition composition, and seamless integration.
+TODO More aggressivly remove references to test dual-pipeline setup.
 ## Current Architecture (Dual Pipeline)
 
 ### Phase 1: Context Parsing
@@ -37,40 +37,18 @@ The macro engine currently uses a **dual pipeline** architecture where definitio
 ## Target Architecture (Unified Pipeline)
 
 ### Single Integrated Lexer
-A unified character-by-character pushdown automaton that produces a **mixed AST** containing:
+A unified character-by-character pushdown automaton that produces a list of tokens, each covering one top-level semantic object and labelled appropriately.
 
-```
-MixedAST:
-  ├─ DefinitionNode(pattern_class, strength, key_is_regex, value_is_regex, key, value)
-  ├─ LiteralNode(text, preserve_newlines=True)
-  ├─ InvocationNode(raw_text, is_regex, content_parts=[...])
-  ├─ DefinitionNode(...)
-  ├─ LiteralNode(...)
-  └─ InvocationNode(...)
-```
 
 ### Parsing Rules
-The unified lexer handles (in order of specificity):
-
-1. **Escape sequences**: `\` followed by syntax character (`\:`, `\<`, `\>`, `\/`, `\\`)
-2. **Definition lines**: Text starting with `:` followed by definition syntax
-3. **Bounded tokens**: `< >` pairs containing key or parameterized invocations
-4. **Literal text**: Everything else, preserving newlines and original spacing
+The unified parser handles extracting individual components of each type of semantic object into populated code objects of the correct type
 
 ### Evaluation Strategy
 
-1. **Top-level evaluation**: Root ASTNode with transparent=True
-2. **Process mixed AST sequentially**:
-   - DefinitionNode: Push definition to context stack
-   - LiteralNode: Append to output, preserving newlines
-   - InvocationNode: Apply pre-patterns, resolve via context, apply post-patterns, recurse
-3. **Scope management**:
-   - Transparent nodes (parent=True) do not create scope boundaries
-   - Opaque nodes pop their definitions after evaluation
-   - Siblings are isolated unless parent is transparent
+REMOVED incorrect information about nodes and evaluation lifeycle.
 
 ## Implementation Roadmap
-
+TODO some of these tasks are complete, and some represent earlier code models that are no longer accurate
 ### Phase 1: Prepare Infrastructure
 - [ ] Rename `_parse_global_context()` to `_parse_context()` to indicate both global and local parsing
 - [ ] Create DefinitionNode, LiteralNode, and InvocationNode classes
@@ -103,9 +81,9 @@ The unified lexer handles (in order of specificity):
 
 ## Key Design Decisions
 
+TODO I don't think this info about newlines reflects reality. Newlines in literals are preserved but split tokens. Multiline definitions are handled by regex `'\n'` escape sequences, not natively.
 ### 1. Newline Preservation
 Literal nodes preserve newlines to maintain prompt structure. This allows:
-- Multi-line definitions in context
 - Multi-line prompts with maintained formatting
 - Definition blocks separated by blank lines
 
@@ -116,21 +94,22 @@ Definitions are evaluated in order encountered:
 - Definitions in subtrees don't affect siblings (unless transparent)
 
 ### 3. Regex Detection
-Patterns `/ ... /` are detected both in contexts AND invocations:
+Regex patterns `/ ... /` are valid both in the match AND the replacement value:
 - Key can be regex: `:/pattern/:literal` (pre-pattern)
 - Value can be regex: `:literal:/pattern/` (substitution replacement)
 - Both can be regex: `:/key_pattern/:/value_pattern/`
 - Detection: pattern must start and end with `/` and ending `/` cannot be escaped
 
 ### 4. Escape Semantics
-Backslash escapes only syntax characters (defined in SYNTAX_CHARACTERS):
+Backslash escapes only our syntax characters (for now defined in SYNTAX_CHARACTERS but TODO expand to dynamically passed syntax):
 - `:` (separator)
 - `<` (invocation start)
 - `>` (invocation end)
 - `/` (pattern delimiter)
 - `\` (escape character itself)
 
-This is stricter than Python/regex escaping and prevents accidental character loss.
+This is stricter than Python/regex escaping and allows those sequences to be passed on as appropriate.
+TODO ensure that text that is passing through as non-regex literal text is Python-escaped as needed, so "standard" escape sequences only get replaced in regex type string.
 
 ## Benefits of Unification
 

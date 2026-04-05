@@ -24,13 +24,13 @@ class Token:
     Attributes:
         start_idx (int): Index of opening marker (or start of literal) in original text
         end_idx (int): Index of closing marker (or end of literal) in original text
-        marker_type (Tuple[str, str]): (start_marker, end_marker) tuple for bounded tokens,
+        type_markers (Tuple[str,str, str]): (Token type, start_marker, end_marker) tuple
                                        ('', '') for literal text spans
         text (str): Complete token text (with markers for bounded tokens, plain text for literals)
     """
     start_idx: int
     end_idx: int
-    marker_type: Tuple[str, str]
+    marker_type: Tuple[str, str, str]
     text: str
     
     def __eq__(self, other):
@@ -70,12 +70,12 @@ class ASTNode:
         self.is_transparent = is_transparent
         self.content_parts = content_parts if content_parts is not None else []
     
-    def evaluate(self, context: MacroContext, trace_log: Dict) -> str:
+    def evaluate(self, context: MacroContext) -> str:
         """Evaluate this node and return resolved string.
         
         Delegates to the evaluate_ast_node() function for the actual evaluation logic.
         """
-        return evaluate_ast_node(self, context, trace_log)
+        return evaluate_ast_node(self, context)
 
 class MacroContext:
     """Double-ended context stack for definition scope management.
@@ -85,7 +85,7 @@ class MacroContext:
     strong definitions are checked before weak ones, implementing priority-based
     lookup and lexical scoping.
     """
-    
+    trace_log: Dict = None  # Optional dictionary to record evaluation trace information
     def __init__(self):
         # Double-ended queue: Head = STRONG, Tail = WEAK
         self.stack: deque[Definition] = deque()
