@@ -4,225 +4,124 @@ This document defines the shared data structures and contracts between the three
 
 ## Overview
 
-The macro engine processes text through three sequential stages:
+The macro engine processes text through a strictly lazy, recursive lifecycle:
 
 ```
 String Input
-    ↓ [LEXER]
+↓ [LEXER]
 Token List
-    ↓ [PRE PARSER]
-Token List
-    ↓ [PARSER]
-Abstract Syntax Tree (AST) with Definitions
-    ↓ [EVALUATOR + Calling Context]
+↓ [PARSER]
+Abstract Syntax Tree (AST) with Local Definitions
+↓ [EVALUATOR + Calling Context]
 Final String Output
 ```
-TODO objects are defined in `core_engine.py`, ensure consistency.
 This document specifies the data structures passed between stages and the invariants guaranteed by each subsystem.
 
 ### Token Class (Lexer -> Parser interface)
 
-**Purpose:** Represents an atomic unit identified by the character-by-character lexing process.
+**Purpose:** Represents an atomic unit identified by the character-by-character pushdown automaton. 
 
 **Fields:**
-- `value` (str): Unprocessed token content
-- `position` (int): Character offset in input string
-- `length` (int): Number of characters consumed
-TODO is length or endpoint better?
-- `type_markers` (`Tuple[(str, str, str)]`) Type of object token corresponds to, boundary marker characters, start and end
-  First string is one of:
-  - `'LITERAL'`: Basic plain text to appear unchanged
-  - `'DEFINITION`': Definition from a key/pattern to a replacement value. Removed the following:
-      - ~~`'PRE_DEF'`: Definition from a key/pattern to a replacement value, applied before tokenizing/parsing~~
-      - ~~`'BOUND_DEF'`: Definition from a key/pattern to a replacement value, applied to invocation-bounded tokens~~
-      - ~~`'POST_DEF'`: Definition from a key/pattern to a replacement value, applied to final text following subtree evaluation~~
-  - `'INVOCATION'`: A bounded token string intended to be replaced by a bounded definition value
-  - `'GROUP'`: A bounded substring intended to be evaluated as a separate unit
-  - `'SPLIT'`: A divider between different options that may be selected by seeded PRNG
-  - `'MODIFIER'`: The index, quantity, separator values that can precede a string or invocation key
+- `value` (str): Unprocessed token content (includes internal boundary markers if applicable).
+- `position` (int): Character offset of the start marker in the input string.
+- `length` (int): Number of characters consumed.
+- `type_markers` (`Tuple[str, str, str]`): Tuple defining `(Token_Type, Start_Marker, End_Marker)`. 
+  `Token_Type` is one of:
+  - `'LITERAL'`: Basic plain text; no internal parsing required.
+  - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
+  - `'INVOCATION'`: A bounded token (`< >`) intended to be resolved against the Context Stack.
+  - `'MULTI_VALUE'`: A bounded substring (`{ }`) intended to trigger PRNG reduction.
+  - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
+  - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocations or Multi-Value groups.
 
 **Invariants:**
-- All syntax characters (eg `<`, `>`, `\`, `:`, `/`) appearing in LITERAL tokens are passed through as-is
-- Tokens appear in source order; concatenating all token values reconstructs input
-- Token contents contain the syntax/boundaries that defined them
+- `SPLIT` and `MODIFIER` tokens are only identified at the current lexical depth (zero-depth relative to the parent string). Nested markers remain inert text.
+- Escape characters preceding genericized syntax markers are passed through to the Parser.
 
-### Definition
+### Definition Class (Parser Output)
 
-**Purpose:** Parsed definition directive from a preo-/bounded-/post-Definition token.
+**Purpose:** Parsed directive from a Definition token, ready for Context Stack insertion.
+
+**Syntax Matrix:**
+- **Start Markers (Class):** `:` (Bounded Macro), `:<` (Pre-Pattern), `:>` (Post-Pattern).
+- **Middle Markers (Direction/Strength):** `[Empty String]` (Base), `<` (Left-Concat), `>` (Right-Concat); then `:` (Strong) or `::` (Weak).
 
 **Fields:**
-- `pattern_class` (str): Pattern application timing
-  - `'PRE'`: Applied before bounded token parsing
-  - `'BOUNDED'`: Applied within invocation boundaries
-  - `'POST'`: Applied after all resolution
-  `direction` (str): Where the value goes
-    - `BASE`: Standard regex definition, sets base value for invocations
-    - `LEFT`: Concatenated on left of pre/post match string or invocation value
-    - `RIGHT`: Concatenated on right of pre/post match string or invocation value
-- `strength` (str): Stack priority
-  - `'STRONG'`: Pushes to stack HEAD (checked first)
-  - `'WEAK'`: Pushes to stack TAIL (used as fallback)
-- `key_is_regex` (bool): Whether key should match as regex
-- `value_is_regex` (bool): Whether value should apply as regex replacement
-- `key` (str): Pattern to match (literal or regex without delimiters)
-- `value` (str): Replacement text (literal or regex with backreferences)
+- `pattern_class` (str): `'PRE'`, `'BOUNDED'`, or `'POST'`.
+- `direction` (str): 
+  - `'BASE'`: Search-terminating root value.
+  - `'LEFT'`: Prepended to the base/match.
+  - `'RIGHT'`: Appended to the base/match.
+- `strength` (str): `'STRONG'` (Stack HEAD) or `'WEAK'` (Stack TAIL).
+- `key_is_regex` (bool): Key uses `/ /` delimiters.
+- `value_is_regex` (bool): Value uses `/ /` delimiters.
+- `key` (str): Pattern or identifier to match (delimiters stripped).
+- `value` (str): Replacement text or format string (delimiters stripped).
 
 **Invariants:**
-- key and value are unescaped (escape characters removed)
-- Regex patterns have `/` delimiters already stripped
-- pattern_class is always one of: 'PRE', 'BOUNDED', 'POST'
-- direction is always one of: 'LEFT', 'BASE', 'RIGHT'
-- strength is always one of: 'STRONG', 'WEAK'
+- `key` and `value` have bounding syntax and escape characters stripped where appropriate.
 
-### ASTNode Class (Parser Output)
+### ASTNode Class Hierarchy (Parser Output)
 
-**Purpose:** Represents a semantic unit for evaluation, with content that may contain nested nodes.
+**Purpose:** Represents a semantic, executable unit for evaluation. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class.
 
-**Attributes:**
-TODO is this using different classes as different node types, or handled by a field/content difference?
-- `is_invocation` (bool): Whether interpreted as an invocation key token with arguments, or as a potentially multi-value text
-  - True: Macro invocation (`< >` boundaries), applies Bounded Definitions to key tokens before evaluating
-  - False: Either literal text or a `{ }` block, does not apply key-value replacements before evaluating and recursing
-- `raw_text` (str): Original text before evaluation
-- `is_transparent` (bool): Whether scope changes affect siblings
-  `definitions` (List[Definition]): All invocation arguments and top-level internal definitions that apply to contents. Exludes inherited and nested inner definitions.
-- `output_parts` (List[ASTNode]): Mixed text and invocation nodes that will turn into output text
-  TODO is parts or children a better description
+**Base Interface (`ASTNode`):**
+- `raw_text` (str): Original text payload before evaluation.
+- `evaluate(context: MacroContext) -> str`: The polymorphic execution contract.
+
+**Subclasses:**
+- `LiteralNode`: Contains static text. Evaluation applies Pre/Post patterns and returns the string.
+- `MultiValueNode`: Contains a raw payload and an optional `modifier` (e.g., `2$$`). Evaluation triggers PRNG list reduction.
+- `InvocationNode`: Contains a `key` and an optional `modifier`. Evaluation triggers Context Stack lookup, followed by PRNG list reduction on the retrieved string.
+- `BlockNode`: The container for a scoped text area (e.g., the global prompt or a Transparent Block).
+  - `is_transparent` (bool): If True, scoped definitions leak to siblings.
+  - `local_definitions` (List[Definition]): Parsed definitions extracted from the scope (Scope Hoisting).
+  - `outputs` (List[ASTNode]): The sequence of polymorphic child nodes to be evaluated.
 
 **Invariants:**
-- All child nodes are ASTNode objects
-- Concatenating all Node.raw_text produces non-definition content from originals
+- `outputs` contains strictly `ASTNode` objects, never raw `Token` objects.
+- Inner boundaries of `InvocationNode` and `MultiValueNode` are stored as raw strings; they are not parsed into child trees until `.evaluate()` is explicitly called.
 
 ### MacroContext Class (Evaluator State)
 
-**Purpose:** Object for for managing PRNG and scoped definitions during evaluation.
+**Purpose:** State container managing the PRNG and lexically scoped definitions.
 
 **Architecture:**
-- Deque-based with strong definitions at HEAD (left), weak at TAIL (right)
-- Left-to-right iteration ensures strong definitions checked before weak
-- Enables lexical scoping with local definitions overriding or defaulting global
-- TODO PRNG Object
-- TODO Trace Log Object
+- Deque-based: Strong definitions pushed to HEAD, Weak definitions pushed to TAIL.
+- PRNG: Implements path-hashed seed tracking (`parent_seed + child_index`) for deterministic sibling generation.
 
 **Methods:**
-- `push(definitions: List[Definition], transparent = False) → None`: Add definitions based on strength with scope-markers based on transparency
-  - Strong definitions append to left (HEAD)
-  - Weak definitions append to right (TAIL)
-REMOVED `pop_strong` and `pop_weak`. There is not need for these as individual functions, at least so far.
-- `get_definitions(pattern_class: str) → List[Definition]`: Return definitions matching pattern_class in priority order (left-to-right)
+- `push(definitions: List[Definition]) → None`: Inserts definitions into the deque.
+- `get_definitions(key: str) → Tuple[Optional[Definition], List[Definition]]`: Traverses the deque Left-to-Right. Accumulates `LEFT` and `RIGHT` modifiers into a list. Terminates search and returns `(Base_Definition, Modifiers_List)` upon hitting a `BASE`.
+- `get_unbounded_patterns(pattern_class: str) → List[Definition]`: Returns discrete `PRE` or `POST` patterns in priority order.
 
 **Invariants:**
-- Left-to-right traversal of deque always checks strong definitions before weak
-- get_definitions() returns definitions in priority order (strong first, then weak)
+- The Context Stack acts strictly as a search engine. It never evaluates an AST node or provides default/fallback macro rules.
 
 ---
-
-## Stage 1→2 Interface: Lexer Output (Token Objects)
-
-**Defined in:** LEXER_SPECIFICATION.md
-
-The Lexer produces a sequence of Token objects representing raw-string primitives.
-
----
-
-## Stage 2→3 Interface: Parser Output (AST Nodes)
-
-**Defined in:** PARSER_SPECIFICATION.md
-The pre-parser reduces a `SPLIT` Token List into a new Token List according to `MODIFIER`
-The Parser produces definitions and an Abstract Syntax Tree (AST) where each node represents a semantic element.
-
----
-
-## Stage 3 Runtime: Evaluator State (MacroContext)
-
-**Defined in:** EVALUATOR_SPECIFICATION.md
-
-The Evaluator recursively turns an AST Node into the concatentation of its evaluated output_parts.
 
 ## Subsystem Promises
 
-### Lexer Promises (String → Token)
+### Lexer Promises (String → Token List)
+1. **No Lookahead Ambiguity:** Character-by-character processing.
+2. **Lossless:** Tokens correspond 1:1 with boundary rules; concatenating raw token values reconstructs the exact input.
+3. **Lazy Isolation:** All and only top-level (zero-depth) SPLIT and MODIFIER markers are identified as discrete tokens.
 
-**Input:**
-- Raw string (may contain escape sequences, newlines, syntax characters, modifiers, splits)
-- Ordered List of type, boundary marker left, right Tuples (TODO robustness/safety requirements)
-  - (TODO How should line-start to end of line be handled? An end marker of `'\n'` (which will also count end-of-string)? And then that implies start-of-line-only for the start marker?")
-  - Could use `None` to mean a single boundary marker, like a `|` split, that doesn't span content text to an end-marker
-  - TODO special case of identical start and end allowed but produces no nesting, greedy on closing
+#### Parser Promises (Token List → ASTNode)
+1. **State/Data Decoupling:** Separates `DEFINITION` tokens from execution tokens.
+2. **Object Instantiation:** Parses raw definition strings into strongly typed `Definition` objects.
+3. **Polymorphic Mapping (Breadth Eagerness):** Maps the remaining zero-depth execution tokens into their corresponding `ASTNode` subclasses (e.g., `LiteralNode`, `InvocationNode`).
+4. **Depth Laziness:** Never lexes or parses the internal string contents of an `INVOCATION` or `MULTI_VALUE` token.
 
-**Output:** Ordered sequence of Token objects
-
-**Guarantees:**
-1. Character-by-character processing with no lookahead ambiguity
-2. Escape characters and following character are preserved as-is
-3. Tokens correspond 1:1 with semantic objects (Literal, Definition, Invocation, etc)
-4. Tokens are in source order and reconstruct input when concatenated
-5. No information loss (all input characters appear in output)
-6. All and only top-level split markers are 
-
-**See:** LEXER_SPECIFICATION.md for detailed specifications
-
-### Parser Promises (Token → String/Definition/ASTNode)
-
-**Input:** Token object
-
-**Output:** Either a populated Definition, or an ASTNode of an Invocation, Grouped substring, or flat literal text.
-
-**Guarantees:**
-1. Bounded invocation pairs (default `< >`) create invocation nodes
-2. Bounded multi-value group strings create group nodes
-5. All definitions are parsed (key/value unescaped, regex detected), with syntax characters stripped
-
-**See:** PARSER_SPECIFICATION.md for detailed specifications
-
-### Evaluator Promises (AST → String)
-
-**Input:** ASTNode root node; MacroContext
-
-**Output:** Final string output with all macros resolved
-
-**Guarantees:**
-1. Deterministic: Same input and seed produce identical output
-2. Order-dependent: Definitions evaluated left-to-right
-3. Scope-isolated: Non-transparent nodes pop their definitions after evaluation
-4. Regex-safe: Regex substitutions use proper escaping
-5. Single-pass: Tree evaluated exactly once (no multi-pass re-evaluation)
-6. Anonymous escape block: If string starts and ends with `/` (ie `</ />`), it just `unicode_escape`s the string between `/`s
-  - Ie `return codecs.decode(string[1:-1], 'unicode_escape')`. 
-
-**See:** EVALUATOR_SPECIFICATION.md for detailed specifications
-
----
-
-## Design Principles
-
-### Separation of Concerns
-
-- **Lexer** handles character-level syntax (escaping, boundaries, line detection) and division into semantic structured units
-- **PreParser** handles `MODIFIER` and `SPLIT` Token logic, returning a reduced (or repeated) flat List of Tokens
-- **Parser** handles semantic grouping (definition key and value, invocation token and argument)
-- **Evaluator** handles context and scope management and nesting recursion
-
-### Information Preservation
-
-- Each stage preserves input information needed by downstream stages
-- Lexer preserves escape information; Parser strips escapes from parsed content appropriately, left in raw_string
-- Lexer and Parser simply interpret inputs into containers of semantic meaning, Evaluator applies those meanings with final context
-- Lexer and Parser resolve lazily, return only one layer at a time.
-
-### Determinism
-
-- Lexer output is deterministic (no randomness, no context-dependent behavior)
-- Parser output is deterministic (no ambiguous syntax, all cases handled)
-- Evaluator output is deterministic (PRNG seeded by call, mutated by path, not external state)
-
+#### Evaluator Promises (ASTNode + Context → String)
+1. **The Gatekeeper (List Reduction):** Intercepts raw payload strings, Lexes them, and applies `SPLIT`/`MODIFIER` reduction *before* passing the winning sub-list to the Parser. Unselected PRNG branches are instantly destroyed.
+2. **Polymorphic Execution:** Execution logic is entirely encapsulated within the `.evaluate()` methods of the AST subclasses, eliminating procedural type-checking.
+3. **Ephemeral Instantiation:** Child AST branches generated during macro expansion or Multi-Value selection are instantiated dynamically, evaluated, and immediately garbage-collected.
 ---
 
 ## Related Documentation
 
 - [LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md) - String → Token lexing details
-- [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parsing roadmap
-- [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - (Future) Detailed parser specs
+- [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parsing details
 - [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String evaluation details
-- [UNIFIED_PROCESS_PLAN.md](UNIFIED_PROCESS_PLAN.md) - Architecture strategy and rationale
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - Project context and agent guidelines
