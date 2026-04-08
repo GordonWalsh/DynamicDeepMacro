@@ -10,6 +10,8 @@ The macro engine processes text through three sequential stages:
 String Input
     ↓ [LEXER]
 Token List
+    ↓ [PRE PARSER]
+Token List
     ↓ [PARSER]
 Abstract Syntax Tree (AST) with Definitions
     ↓ [EVALUATOR + Calling Context]
@@ -28,13 +30,16 @@ This document specifies the data structures passed between stages and the invari
 - `length` (int): Number of characters consumed
 TODO is length or endpoint better?
 - `type_markers` (`Tuple[(str, str, str)]`) Type of object token corresponds to, boundary marker characters, start and end
-  - First `str` is one of: TODO does tokenizer handle regex boundaries, or is that only for definitions. Can a regex replacement-type pattern live in literal text space (eg to allow newline or tab escape sequences?)
-    - `'LITERAL'`: Basic plain text to appear unchanged
-    - `'PRE_DEF'`: Definition from a key/pattern to a replacement value, applied before tokenizing/parsing
-    - `'BOUND_DEF'`: Definition from a key/pattern to a replacement value, applied to invocation-bounded tokens
-    - `'POST_DEF'`: Definition from a key/pattern to a replacement value, applied to final text following subtree evaluation
-    - `'INVOCATION'`: A bounded token string intended to be replaced by a bounded definition
-    - `'GROUP'`: A collection of one or more values intended to be selected from by PRNG during evaluation
+  First string is one of:
+  - `'LITERAL'`: Basic plain text to appear unchanged
+  - `'DEFINITION`': Definition from a key/pattern to a replacement value. Removed the following:
+      - ~~`'PRE_DEF'`: Definition from a key/pattern to a replacement value, applied before tokenizing/parsing~~
+      - ~~`'BOUND_DEF'`: Definition from a key/pattern to a replacement value, applied to invocation-bounded tokens~~
+      - ~~`'POST_DEF'`: Definition from a key/pattern to a replacement value, applied to final text following subtree evaluation~~
+  - `'INVOCATION'`: A bounded token string intended to be replaced by a bounded definition value
+  - `'GROUP'`: A bounded substring intended to be evaluated as a separate unit
+  - `'SPLIT'`: A divider between different options that may be selected by seeded PRNG
+  - `'MODIFIER'`: The index, quantity, separator values that can precede a string or invocation key
 
 **Invariants:**
 - All syntax characters (eg `<`, `>`, `\`, `:`, `/`) appearing in LITERAL tokens are passed through as-is
@@ -50,6 +55,10 @@ TODO is length or endpoint better?
   - `'PRE'`: Applied before bounded token parsing
   - `'BOUNDED'`: Applied within invocation boundaries
   - `'POST'`: Applied after all resolution
+  `direction` (str): Where the value goes
+    - `BASE`: Standard regex definition, sets base value for invocations
+    - `LEFT`: Concatenated on left of pre/post match string or invocation value
+    - `RIGHT`: Concatenated on right of pre/post match string or invocation value
 - `strength` (str): Stack priority
   - `'STRONG'`: Pushes to stack HEAD (checked first)
   - `'WEAK'`: Pushes to stack TAIL (used as fallback)
@@ -62,6 +71,7 @@ TODO is length or endpoint better?
 - key and value are unescaped (escape characters removed)
 - Regex patterns have `/` delimiters already stripped
 - pattern_class is always one of: 'PRE', 'BOUNDED', 'POST'
+- direction is always one of: 'LEFT', 'BASE', 'RIGHT'
 - strength is always one of: 'STRONG', 'WEAK'
 
 ### ASTNode Class (Parser Output)
@@ -70,20 +80,18 @@ TODO is length or endpoint better?
 
 **Attributes:**
 TODO is this using different classes as different node types, or handled by a field/content difference?
-- `node_type` (str): Semantic category
-  - `'LITERAL'`: Plain text (literal string from LITERAL tokens) TODO: Store literal as raw strings. No need for the rest of node semantics
-  - `'INVOCATION'`: Macro invocation (`< >` boundaries)
-    `'MULTI-VALUE`: Block `{}` containing one or more options to select from
+- `is_invocation` (bool): Whether interpreted as an invocation key token with arguments, or as a potentially multi-value text
+  - True: Macro invocation (`< >` boundaries), applies Bounded Definitions to key tokens before evaluating
+  - False: Either literal text or a `{ }` block, does not apply key-value replacements before evaluating and recursing
 - `raw_text` (str): Original text before evaluation
 - `is_transparent` (bool): Whether scope changes affect siblings
-  `definitions` (`List[Definition]`): All invocation arguments and top-level internal definitions that apply to contents.
-- `output_parts` (List[Union[str, ASTNode]]): Mixed literal text and invocation nodes that will turn into output text
+  `definitions` (List[Definition]): All invocation arguments and top-level internal definitions that apply to contents. Exludes inherited and nested inner definitions.
+- `output_parts` (List[ASTNode]): Mixed text and invocation nodes that will turn into output text
   TODO is parts or children a better description
 
 **Invariants:**
-TODO still TBD on how to handle/place literals
-- All child nodes are either literal strings or ASTNode objects
-- Concatenating all literal parts and Node.raw_text produces non-definition content from originals
+- All child nodes are ASTNode objects
+- Concatenating all Node.raw_text produces non-definition content from originals
 
 ### MacroContext Class (Evaluator State)
 
@@ -94,6 +102,7 @@ TODO still TBD on how to handle/place literals
 - Left-to-right iteration ensures strong definitions checked before weak
 - Enables lexical scoping with local definitions overriding or defaulting global
 - TODO PRNG Object
+- TODO Trace Log Object
 
 **Methods:**
 - `push(definitions: List[Definition], transparent = False) → None`: Add definitions based on strength with scope-markers based on transparency
@@ -119,8 +128,8 @@ The Lexer produces a sequence of Token objects representing raw-string primitive
 ## Stage 2→3 Interface: Parser Output (AST Nodes)
 
 **Defined in:** PARSER_SPECIFICATION.md
-
-The Parser produces an Abstract Syntax Tree (AST) where each node represents a semantic element.
+The pre-parser reduces a `SPLIT` Token List into a new Token List according to `MODIFIER`
+The Parser produces definitions and an Abstract Syntax Tree (AST) where each node represents a semantic element.
 
 ---
 
@@ -135,10 +144,11 @@ The Evaluator recursively turns an AST Node into the concatentation of its evalu
 ### Lexer Promises (String → Token)
 
 **Input:**
-- Raw string (may contain escape sequences, newlines, syntax characters)
-  - Guaranteed to be pre split on parsing-level dividers (typically `|`)
-- Ordered List of type, boundary marker Tuples (TODO robustness/safety requirements)
-  -(TODO How should line-start to end of line be handled? An end marker of `None` or `'\n'`? And then that implies start-of-line only for the start marker?")
+- Raw string (may contain escape sequences, newlines, syntax characters, modifiers, splits)
+- Ordered List of type, boundary marker left, right Tuples (TODO robustness/safety requirements)
+  - (TODO How should line-start to end of line be handled? An end marker of `'\n'` (which will also count end-of-string)? And then that implies start-of-line-only for the start marker?")
+  - Could use `None` to mean a single boundary marker, like a `|` split, that doesn't span content text to an end-marker
+  - TODO special case of identical start and end allowed but produces no nesting, greedy on closing
 
 **Output:** Ordered sequence of Token objects
 
@@ -148,6 +158,7 @@ The Evaluator recursively turns an AST Node into the concatentation of its evalu
 3. Tokens correspond 1:1 with semantic objects (Literal, Definition, Invocation, etc)
 4. Tokens are in source order and reconstruct input when concatenated
 5. No information loss (all input characters appear in output)
+6. All and only top-level split markers are 
 
 **See:** LEXER_SPECIFICATION.md for detailed specifications
 
@@ -155,7 +166,7 @@ The Evaluator recursively turns an AST Node into the concatentation of its evalu
 
 **Input:** Token object
 
-**Output:** Either a literal text String, a populated Definition, or an ASTNode of appropriate type/content
+**Output:** Either a populated Definition, or an ASTNode of an Invocation, Grouped substring, or flat literal text.
 
 **Guarantees:**
 1. Bounded invocation pairs (default `< >`) create invocation nodes
@@ -176,6 +187,8 @@ The Evaluator recursively turns an AST Node into the concatentation of its evalu
 3. Scope-isolated: Non-transparent nodes pop their definitions after evaluation
 4. Regex-safe: Regex substitutions use proper escaping
 5. Single-pass: Tree evaluated exactly once (no multi-pass re-evaluation)
+6. Anonymous escape block: If string starts and ends with `/` (ie `</ />`), it just `unicode_escape`s the string between `/`s
+  - Ie `return codecs.decode(string[1:-1], 'unicode_escape')`. 
 
 **See:** EVALUATOR_SPECIFICATION.md for detailed specifications
 
@@ -186,7 +199,8 @@ The Evaluator recursively turns an AST Node into the concatentation of its evalu
 ### Separation of Concerns
 
 - **Lexer** handles character-level syntax (escaping, boundaries, line detection) and division into semantic structured units
-- **Parser** handles semantic grouping (definition key and value, invocation token and argument, nesting)
+- **PreParser** handles `MODIFIER` and `SPLIT` Token logic, returning a reduced (or repeated) flat List of Tokens
+- **Parser** handles semantic grouping (definition key and value, invocation token and argument)
 - **Evaluator** handles context and scope management and nesting recursion
 
 ### Information Preservation

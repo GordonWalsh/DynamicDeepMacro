@@ -51,7 +51,7 @@ def is_regex_pattern(text: str) -> bool:
     """
     if len(text) < 2 or not text.startswith('/') or not text.endswith('/'):
         return False
-    # Check ending slash is not escaped
+    # Check ending slash is not escaped by walking backwards from second-to-last character and counting for even backslashes
     backslashes = 0
     idx = len(text) - 2
     while idx >= 0 and text[idx] == '\\':

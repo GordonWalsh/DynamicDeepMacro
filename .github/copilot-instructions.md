@@ -1,4 +1,5 @@
 # GitHub Copilot & AI Agent Instructions
+TODO zzz Check if any of the content in this file is now outdated due to recent changes, and update if necessary. This file should be kept up-to-date with the current architecture and implementation strategy to ensure that AI agents have accurate guidance for contributing to the project.
 
 ## 1. Project Context & Copilot Instructions
 You are assisting with the development of a high-performance **Macro Compiler and Text Expansion Engine**, which is intended to later be built as a custom node suite for **ComfyUI**. 
@@ -16,7 +17,7 @@ The architecture and implementation of the engine is documented across multiple 
 - [LEXER_SPECIFICATION.md](../LEXER_SPECIFICATION.md) - String → Token lexing specs (escape sequences, boundaries, definition lines)
 - [PARSER_SPECIFICATION.md](../PARSER_SPECIFICATION.md) - Token → AST parser implementation roadmap
 - [EVALUATOR_SPECIFICATION.md](../EVALUATOR_SPECIFICATION.md) - AST → String evaluation specs (7-phase lifecycle, context management)
-- [UNIFIED_PROCESS_PLAN.md](../UNIFIED_PROCESS_PLAN.md) - Architecture strategy and migration rationale
+- [UNIFIED_PROCESS_PLAN.md](../.devTransient/UNIFIED_PROCESS_PLAN.md) - Architecture strategy and migration plan from initial dual-pipeline implementation to unified pipeline
 
 **Core Directives for AI Agents:**
 * Prioritize deterministic execution. Generative AI prompts require exact repeatability based on seed and tree path.
@@ -56,17 +57,19 @@ When generating or refactoring code, adhere strictly to these architectural cons
   * Strong Definitions (`:`) push to the **Head** (Left).
   * Weak Definitions / Defaults (`::`) push to the **Tail** (Right).
 * **Left-to-Right Traversal:** When searching for a variable definition, iterate forward through the context stack (normal order), ensuring Strong/local definitions are checked before Weak/global defaults.
-* **Lexical Scoping:** Always push local scope markers/definitions when entering an AST node, and strictly `pop()` them when exiting, *unless* the node is invoked transparently (e.g., the `<|<Macro>>` Dummy Root).
+* **Lexical Scoping:** Always push local scope markers/definitions when entering an AST node, and strictly `pop()` them when exiting, *unless* the node is invoked transparently (e.g., the `<|<Macro>>` special case).
 
 ### Execution Phasing
 An AST Node lifecycle must strictly follow this order:
-1. Push local arguments to Context.
+1. Push local arguments to Context. Perform rest of invocation key evaluation, lookup, and replacement TODO expand on that
+  TODO Can this just be treated as pre-joining the invocation node token with the local args, and the numbered reference as strong definitions to the values of any definition arguments (defaulting `''`)? The syntax of the arguments should align perfectly with the syntax of context definitions, and I think the logic around the idea of transparent nodes aligns with this definition as well.
 2. Apply Unbounded Pre-Patterns (execute Left-to-Right on the string, pulling patterns left-to-right from the stack in evaluation order).
-3. Resolve Multi-Value sequences (`{a|b|c}`, `$$` logic).
-4. Lex and Parse Bounded Tokens (`< >`) into child AST nodes.
-5. Recursively evaluate children and concatenate literal text.
-6. Apply Unbounded Post-Patterns (Left-to-Right on the string, left-to-right evaluation from the stack).
-7. Pop local scope.
+3. Lex the string into Tokens of Literal text, Definitions, Bounded Invocations (eg `< >`), Bounded Groups (eg `{ }`), ValueSplits (eg `|`) and Modifier (eg `$$`).
+4. Resolve Multi-Value sequences (`{a|b|c}`, `$$` logic).
+5. Parse selected Tokens into Definitions and ASTNodes (Text or Invocation).
+6. Recursively evaluate children and concatenate literal text.
+7. Apply Unbounded Post-Patterns (Left-to-Right on the string, left-to-right evaluation from the stack).
+8. Pop local scope.
 
 ### The Trace State Object
 * Never implement multi-pass evaluation for secondary variables.
