@@ -6,7 +6,7 @@ This document defines the shared data structures and contracts between the three
 
 The macro engine processes text through a strictly lazy, recursive lifecycle:
 
-```
+```text
 String Input
 ↓ [LEXER]
 Token List
@@ -15,17 +15,18 @@ Abstract Syntax Tree (AST) with Local Definitions
 ↓ [EVALUATOR + Calling Context]
 Final String Output
 ```
+
 This document specifies the data structures passed between stages and the invariants guaranteed by each subsystem.
 
 ### Token Class (Lexer -> Parser interface)
 
-**Purpose:** Represents an atomic unit identified by the character-by-character pushdown automaton. 
+**Purpose:** Represents an atomic unit identified by the character-by-character pushdown automaton.
 
 **Fields:**
 - `value` (str): Unprocessed token content (includes internal boundary markers if applicable).
 - `position` (int): Character offset of the start marker in the input string.
 - `length` (int): Number of characters consumed.
-- ``token_type` (`TokenType` Enum) is one of:
+- `token_type` (`TokenType` Enum) is one of:
   - `'LITERAL'`: Basic plain text; no internal parsing required.
   - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
   - `'INVOCATION'`: A bounded token (`< >`) intended to be resolved against the Context Stack.
@@ -48,7 +49,7 @@ This document specifies the data structures passed between stages and the invari
 
 **Fields:**
 - `pattern_class` (str): `'PRE'`, `'BOUNDED'`, or `'POST'`.
-- `direction` (str): 
+- `direction` (str):
   - `'BASE'`: Search-terminating root value.
   - `'LEFT'`: Prepended to the base/match.
   - `'RIGHT'`: Appended to the base/match.
@@ -63,7 +64,7 @@ This document specifies the data structures passed between stages and the invari
 
 ### ASTNode Class Hierarchy (Parser Output)
 
-**Purpose:** Represents a semantic, executable unit for evaluation. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class. 
+**Purpose:** Represents a semantic, executable unit for evaluation. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class.
 
 **Note on Parser Return Type:** The Parser does *not* return a single root node. To avoid creating dummy wrappers, it returns a flat `Tuple[List[Definition], List[ASTNode]]`.
 
@@ -104,19 +105,22 @@ This document specifies the data structures passed between stages and the invari
 ## Subsystem Promises
 
 ### Lexer Promises (String → Token List)
+
 1. **No Lookahead Ambiguity:** Character-by-character processing.
 2. **Lossless:** Tokens correspond 1:1 with boundary rules; concatenating raw token values reconstructs the exact input.
 3. **Lazy Isolation:** All and only top-level (zero-depth) SPLIT and MODIFIER markers are identified as discrete tokens.
-4.  **(Block Tracking):** When the Lexer encounters `<<` immediately following a Definition header, it suspends `\n` termination. It uses a pushdown automaton to find the matching `>>` at the current zero-depth level, treating all internal content (including newlines and inner definitions) as the token's raw `value`.
+4. **(Block Tracking):** When the Lexer encounters `<<` immediately following a Definition header, it suspends `\n` termination. It uses a pushdown automaton to find the matching `>>` at the current zero-depth level, treating all internal content (including newlines and inner definitions) as the token's raw `value`.
 
 #### Parser Promises (Token List → ASTNode)
+
 1. **State/Data Decoupling:** Separates `DEFINITION` tokens from execution tokens.
 2. **Object Instantiation:** Parses raw definition strings into strongly typed `Definition` objects.
 3. **Polymorphic Mapping (Breadth Eagerness):** Maps the remaining zero-depth execution tokens into their corresponding `ASTNode` subclasses (e.g., `LiteralNode`, `InvocationNode`) and returns them alongside the hoisted definitions as a `Tuple`.
 4. **Depth Laziness:** Never lexes or parses the internal string contents of an `INVOCATION` or `GROUP` token.
-5. **Selective Escape Stripping:** The Parser strictly strips escape characters (`\`) _only_ when they precede custom structural syntax markers. It preserves all standard text escapes (`\n`, `\t`, `\d`) as literal strings, leaving them fully intact for downstream regex compilation or Late-Binding escape decoding.
+5. **Selective Escape Stripping:** The Parser strictly strips escape characters (`\`) *only* when they precede custom structural syntax markers. It preserves all standard text escapes (`\n`, `\t`, `\d`) as literal strings, leaving them fully intact for downstream regex compilation or Late-Binding escape decoding.
 
 #### Evaluator Promises (ASTNode + Context → String)
+
 1. **The Gatekeeper (List Reduction):** Intercepts raw payload strings, Lexes them, and applies `SPLIT`/`MODIFIER` reduction *before* passing the winning sub-list to the Parser. Unselected PRNG branches are instantly destroyed.
 2. **Polymorphic Execution:** Execution logic is entirely encapsulated within the `.evaluate()` methods of the AST subclasses, eliminating procedural type-checking.
 3. **Ephemeral Instantiation:** Child AST branches generated during macro expansion or Group selection are instantiated dynamically, evaluated, and immediately garbage-collected.

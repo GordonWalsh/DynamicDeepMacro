@@ -5,8 +5,7 @@ This document specifies the evaluation subsystem: recursive traversal and evalua
 ## Overview
 
 The Evaluator performs the third stage of processing:
-
-```
+```text
 Abstract Syntax Tree (AST) → [RECURSIVE EVALUATION] → Final String Output
 ```
 
@@ -59,7 +58,7 @@ Each ASTNode evaluation follows a strict seven-phase lifecycle to ensure consist
 **Ordering:** Pre-patterns are applied before any invocation parsing, allowing text transformations that affect boundary detection.
 
 **Example:**
-```
+```text
 Input: "dark sky with dark clouds"
 Context: :<dark:bright
 Result: "bright sky with bright clouds"
@@ -84,7 +83,7 @@ Result: "bright sky with bright clouds"
 **Output:** content_parts now contains mixed literal strings and INVOCATION nodes
 
 **Example:**
-```
+```text
 Input (after Phase 2): "Generate a <adjective> <noun>"
 Phase 3 Output: [
     "Generate a ",
@@ -113,7 +112,7 @@ Phase 3 Output: [
 - Transparent nodes (ROOT) do not create scope boundaries
 
 **Example:**
-```
+```text
 Input: [
     "Generate a ",
     INVOCATION(raw_text="adjective"),
@@ -141,7 +140,7 @@ Phase 4 Output:
 **Ordering:** Post-patterns are applied after all invocation resolution, allowing final text cleanup.
 
 **Example:**
-```
+```text
 Input: "Generate a dark wizard"
 Context: :>wizard:mage
 Result: "Generate a dark mage"
@@ -195,15 +194,19 @@ Unbounded patterns are applied sequentially to the full text using the following
 2. **Apply appropriate substitution:**
 
    **Regex Key + Regex Value:**
+
    ```python
    result = re.sub(definition.key, definition.value, text)
    ```
+
    Allows backreferences: `/(cat)/:feline \1` matches "cat" and replaces with "feline cat"
 
    **Regex Key + Literal Value:**
+
    ```python
    result = re.sub(definition.key, definition.value, text)
    ```
+
    Literal value is used as-is; escapes handled by regex engine
 
    **Literal Key + Regex Value:**
@@ -229,8 +232,9 @@ Unbounded patterns are applied sequentially to the full text using the following
 - Creates a composition: `D1(D2(...Dn(input)...))`
 
 ### Example: Composed Substitutions
+
 TODO Why not replace the `/  /  /` strings with definition syntax?
-```
+```text
 Input: "The quick brown fox"
 
 Context:
@@ -247,15 +251,16 @@ Result: "The slow gray fox"
 ```
 
 ---
+TODO Add description of other elements of context
 
 ## Context Stack Management
-TODO Add description of other elements of context
+
 ### MacroContext During Evaluation
 
 The MacroContext is a double-ended deque that maintains definition priority during evaluation.
 
 **Structure:**
-```
+```text
 HEAD (strong, highest priority)
 ├─ Strong definitions (pushed in Phase 1)
 ├─ (evaluated left-to-right)
@@ -284,9 +289,8 @@ TAIL (weak, lower priority)
 - Definitions pushed in Phase 1 are popped in Phase 6
 - Siblings do not see child definitions
 
-**Example: Scope Isolation**
-
-```
+**Example of Scope Isolation:**
+```text
 Input: "<noun_1> <noun_2>"
 Context: {noun_1: "cat", noun_2: "dog"}
 
@@ -333,8 +337,7 @@ When an INVOCATION node's raw_text is evaluated:
 3. **Return:** The resolved value becomes the INVOCATION node's output
 
 **Example:**
-
-```
+```text
 Raw text: "adjective"
 Context: 
   :adjective:dark        (strong definition)

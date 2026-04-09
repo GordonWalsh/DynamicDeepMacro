@@ -8,9 +8,11 @@
 > 3. [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String
 
 ## Overview
+
 This specification outlines the methodical implementation of a Token-to-AST parser that converts the `Token` objects from the Lexer into a meaningful Abstract Syntax Tree (AST) node representing literals, definitions, invocations, and other semantic constructs. The parser will be built incrementally, with each milestone adding features while maintaining test coverage and clean architecture.
 
 ## Core Architecture Principles
+
 - **Incremental Development**: Each milestone builds on the previous, with working code and tests at every step.
 - **Semantic Clarity**: AST nodes have clear, typed properties that represent their meaning (e.g., `DefinitionNode` with pattern_class, strength, etc.).
 TODO Verify if using typed nodes or separate contents
@@ -20,6 +22,7 @@ TODO Verify if using typed nodes or separate contents
 - **Documentation**: Inline comments and docstrings explain node semantics and parser logic.
 
 ## Milestone 1: Define AST Node Classes
+
 **Goal**: Establish the foundational AST node types that represent different semantic constructs.
 
 **Implements Features**:
@@ -54,6 +57,7 @@ TODO Verify if using typed nodes or separate contents
 - Comments on how nodes map to Token types.
 
 ## Milestone 2: Basic Token-to-Node Conversion
+
 **Goal**: Implement a parser that converts individual Tokens to corresponding AST nodes.
 
 **Implements Features**:
@@ -80,6 +84,7 @@ TODO Verify if using typed nodes or separate contents
 - Comments on token-to-node mapping logic.
 
 ## Milestone 3: Definition Syntax Parsing
+
 **Goal**: Extend parser to recognize and parse definition tokens into `DefinitionNode` objects.
 
 **Implements Features**:
@@ -107,9 +112,11 @@ TODO Verify if using typed nodes or separate contents
 - Examples of token-to-DefinitionNode conversion.
 
 ## Milestone 4: Nested Invocation Parsing
+
 REMOVED Incorrect description. Nesting is handled recursively, one layer at a time.
 
 ## Milestone 5: Unified Parser Integration
+
 **Goal**: Integrate the parser with the unified lexer and update the engine interface.
 
 **Implements Features**:
@@ -134,6 +141,7 @@ REMOVED Incorrect description. Nesting is handled recursively, one layer at a ti
 - Integration notes on how lexer and parser work together.
 
 ## Milestone 6: Error Handling and Edge Cases
+
 **Goal**: Add robustness for malformed input and edge cases.
 
 **Implements Features**:
@@ -158,6 +166,7 @@ REMOVED Incorrect description. Nesting is handled recursively, one layer at a ti
 - Examples of error cases.
 
 ## Final Milestone: Optimization and Cleanup
+
 **Goal**: Refine performance, remove cruft, and finalize the parser.
 
 **Implements Features**:

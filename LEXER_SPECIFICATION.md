@@ -22,17 +22,17 @@ To bypass the catastrophic performance penalties of Python string buffering, the
 
 Instead of slicing and buffering strings character-by-character, the Lexer runs a single pass over the text.
 
-* It uses independent pushdown automata (stacks) for each configured boundary type (e.g., `<` and `>`).
-* When an opening marker is found, its integer index is pushed.
-* When a closing marker is found, the stack pops, and the `(start_index, end_index)` pair is registered as a "Candidate Interval".
-* Discrete markers (like `|` or `$$`) are registered instantly at their integer index without needing a closing pair.
+- It uses independent pushdown automata (stacks) for each configured boundary type (e.g., `<` and `>`).
+- When an opening marker is found, its integer index is pushed.
+- When a closing marker is found, the stack pops, and the `(start_index, end_index)` pair is registered as a "Candidate Interval".
+- Discrete markers (like `|` or `$$`) are registered instantly at their integer index without needing a closing pair.
 
 ### 2.2 Zero-Depth Interval Culling
 
 To inherently protect nested syntax and isolate user typos (unbalanced brackets), the Lexer applies a culling algorithm at the end of the pass.
 
-* **The Rule:** If a registered token boundary (e.g., `{ }` or `|`) falls strictly within the index bounds of a higher-order boundary (e.g., `< >`), the inner marker is neutralized.
-* **The Result:** The Lexer only emits zero-depth tokens. The internal contents of macros and groups remain untouched, flat literal strings.
+- **The Rule:** If a registered token boundary (e.g., `{ }` or `|`) falls strictly within the index bounds of a higher-order boundary (e.g., `< >`), the inner marker is neutralized.
+- **The Result:** The Lexer only emits zero-depth tokens. The internal contents of macros and groups remain untouched, flat literal strings.
 
 * * *
 
@@ -44,12 +44,12 @@ The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` o
 
 **Supported Token Types:**
 
-* `LITERAL`: Plain text.
-* `DEFINITION`: Bounded macro, pre-pattern, or post-pattern rules.
-* `INVOCATION`: Context Stack lookup wrappers (`< >`).
-* `GROUP`: Multi-value PRNG reduction wrappers (`{ }`).
-* `SPLIT`: Zero-depth option dividers (`|`).
-* `MODIFIER`: Math/Quantity rules (`2$$`).
+- `LITERAL`: Plain text.
+- `DEFINITION`: Bounded macro, pre-pattern, or post-pattern rules.
+- `INVOCATION`: Context Stack lookup wrappers (`< >`).
+- `GROUP`: Multi-value PRNG reduction wrappers (`{ }`).
+- `SPLIT`: Zero-depth option dividers (`|`).
+- `MODIFIER`: Math/Quantity rules (`2$$`).
 
 * * *
 
@@ -59,9 +59,9 @@ The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` o
 
 To avoid the "Slash Collision Trap" (destroying file paths or standard regex inputs), the Lexer employs selective escaping using the backslash (`\`).
 
-* A backslash only acts as an escape character if it immediately precedes a custom structural syntax marker defined in the `SyntaxConfig` (e.g., `\<`, `\:`).
-* If escaped, the Lexer ignores the marker for boundary tracking.
-* **Standard escapes (e.g., `\n`, `\t`, `\C:\`) are treated as pure literal text** and are not processed or stripped by the Lexer.
+- A backslash only acts as an escape character if it immediately precedes a custom structural syntax marker defined in the `SyntaxConfig` (e.g., `\<`, `\:`).
+- If escaped, the Lexer ignores the marker for boundary tracking.
+- **Standard escapes (e.g., `\n`, `\t`, `\C:\`) are treated as pure literal text** and are not processed or stripped by the Lexer.
 
 * * *
 
@@ -77,9 +77,9 @@ By default, when the Lexer encounters a zero-depth definition header, it tracks 
 
 To support "Container Macros" and multi-line values, the Lexer supports explicit block boundaries that override the EOL termination rule.
 
-* **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the definition's strength marker on the _same line_ (optional spaces/tabs allowed, but no newlines). If found, EOL termination is suspended.
-* **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary. It increments a counter for nested `<<` markers and only closes the block when the outermost `>>` is reached.
-* **Strict Literal Capture:** The Lexer does _not_ chomp newlines. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
+- **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the definition's strength marker on the _same line_ (optional spaces/tabs allowed, but no newlines). If found, EOL termination is suspended.
+- **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary. It increments a counter for nested `<<` markers and only closes the block when the outermost `>>` is reached.
+- **Strict Literal Capture:** The Lexer does _not_ chomp newlines. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
 
 * * *
 
