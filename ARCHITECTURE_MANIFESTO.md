@@ -121,6 +121,10 @@ Unlike Bounded Macros (which have explicit string keys), Unbounded Patterns are 
 
 -   **The Solution:** Context Stack accumulation strictly applies to Bounded Macros. For Unbounded Patterns, using a concat action (`<:` or `>:`) acts as an automated compiler shorthand that implicitly injects the regex `\g<0>` capture token to preserve the matched text, sparing the user from manual escape sequence hell.
 
+### The Multi-Line Value Wrapper (`<< >>`)
+
+-   To support 'Container Macros' and multi-line values without breaking the zero-depth interval tracking, the engine uses explicit Value Wrappers. If `<<` immediately follows a definition's strength marker, the Lexer overrides the End-of-Line termination rule. It initiates a pushdown automaton to track nested `<<` and `>>` pairs, ensuring that nested blocks (like definitions inside definitions) are safely captured as a single, inert literal string. The engine uses **Strict Literal Capture**; leading and trailing newlines inside the block are kept, granting the user explicit control over text flow.
+
 * * * *
 
 5\. Phase D: Evaluation & Execution (The Evaluator)

@@ -216,6 +216,14 @@
       }
     },
     "4_SCOPE_CONTROL": {
+      "MULTI_LINE_BLOCK": {
+        "syntax": "<< ... >>",
+        "context": "Definition Values",
+        "description": "Explicit block markers that replace the standard End-of-Line termination rule for macro definitions.",
+        "behavior": "Captures all internal text, including newlines, as the definition's literal value. Employs Strict Literal Capture (no automatic newline chomping) to allow explicit text flow control. Requires nested tracking so blocks can safely contain other blocks.",
+        "example": ":cyberpunk:<<\n:lighting:neon\n>>",
+        "outcome": "Defines the key 'cyberpunk' with a string value containing a literal newline, the text ':lighting:neon', and another literal newline."
+      },
       "SCOPE_SIBLINGS": {
         "syntax": "<key|<MacroA>|<MacroB>>",
         "context": "Inline text, wrapping multiple invocations.",

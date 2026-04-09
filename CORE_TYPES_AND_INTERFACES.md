@@ -107,6 +107,7 @@ This document specifies the data structures passed between stages and the invari
 1. **No Lookahead Ambiguity:** Character-by-character processing.
 2. **Lossless:** Tokens correspond 1:1 with boundary rules; concatenating raw token values reconstructs the exact input.
 3. **Lazy Isolation:** All and only top-level (zero-depth) SPLIT and MODIFIER markers are identified as discrete tokens.
+4.  **(Block Tracking):** When the Lexer encounters `<<` immediately following a Definition header, it suspends `\n` termination. It uses a pushdown automaton to find the matching `>>` at the current zero-depth level, treating all internal content (including newlines and inner definitions) as the token's raw `value`.
 
 #### Parser Promises (Token List → ASTNode)
 1. **State/Data Decoupling:** Separates `DEFINITION` tokens from execution tokens.
