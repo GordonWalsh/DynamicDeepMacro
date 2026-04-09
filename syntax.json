@@ -4,10 +4,10 @@
       "ESCAPE_CHARACTER": {
         "syntax": "\\",
         "context": "Anywhere",
-        "description": "A single backslash preceding any syntax character.",
-        "behavior": "Prevents the lexer from interpreting the subsequent character as a syntax operator.",
-        "example": "Literal \\<bracket\\>",
-        "outcome": "Outputs `<bracket>` without initiating an AST node capture."
+        "description": "A single backslash preceding a custom macro syntax character.",
+        "behavior": "Prevents the lexer from interpreting the subsequent character as a syntax operator. Standard escape sequences (e.g., \\n, \\t) not preceding a syntax marker are treated as raw literal text unless inside a Regex block or an Anonymous Escape Block.",
+        "example": "Literal \\<bracket\\> and a path C:\\new",
+        "outcome": "Outputs `<bracket> and a path C:\\new` without initiating an AST node capture or destroying the file path."
       },
       "INDEXED_BLOCK_ROUTER": {
         "syntax": "^[ \\t]*#+[ \\t]*(.*?)[ \\t]*#+[ \\t]*$",
@@ -27,7 +27,7 @@
       }
     },
     "2_STATE_MUTATIONS_DEFINITIONS": {
-      "ORTHOGONAL_MATRIX_RULES": "Definitions follow [CLASS][KEY_PATTERN][STRENGTH][VALUE_PATTERN] syntax. CLASS and STRENGTH determine evaluation behavior; KEY_PATTERN and VALUE_PATTERN can each be either literal text or a regex (/pattern/). Definitions must appear at the start of a parsed line or segment.",
+      "ORTHOGONAL_MATRIX_RULES": "Definitions follow [CLASS][KEY_PATTERN][POSITION][STRENGTH][VALUE_PATTERN] syntax. CLASS, POSITION and STRENGTH determine evaluation behavior; KEY_PATTERN and VALUE_PATTERN can each be either literal text or a regex (/pattern/). Definitions must appear at the start of a parsed line or segment, and for the time being, the VALUE_PATTERN strictly terminates at the End-of-Line (\\n).",
       "SYNTAX_COMPOSITION_TABLE": {
         "description": "Complete list of valid definition syntax patterns",
         "BOUNDED_STRONG": {
@@ -82,15 +82,30 @@
         "description": "A colon followed immediately by a right angle bracket. Marks unbounded post-pattern evaluation.",
         "behavior": "Applied Left-to-Right against flattened strings after AST resolution."
       },
+      "POSITION_LEFT": {
+        "syntax": "<",
+        "description": "A left angle bracket. Marks that result will be appended to left of the base output.",
+        "behavior": "For bounded definitions, appends result to the left of the base output and earlier LEFT definitions. For unbounded, shortand to add \\g<0> to the right of the given pattern."
+      },
+      "POSITION_BASE": {
+        "syntax": "",
+        "description": "An empty string. Marks a standard BASE definition that replaces the key with the value in the standard way.",
+        "behavior": "No change to standard behavior."
+      },
+      "POSITION_RIGHT": {
+        "syntax": ">",
+        "description": "A right angle bracket. Marks that result will be appended to right of the base output.",
+        "behavior": "For bounded definitions, appends result to the right of the base output and earlier RIGHT definitions. For unbounded, shortand to add \\g<0> to the left of the given pattern."
+      },
       "STRENGTH_STRONG": {
         "syntax": ":[KEY]:[VALUE]",
         "description": "A single colon between KEY and VALUE markers.",
-        "behavior": "Pushed to the Head of the Context Stack. Overrides weaker definitions. Evaluated first in left-to-right search."
+        "behavior": "Pushed to the Head of the Context Stack. Evaluated first in the Left-to-Right search. If it is a BASE position, it instantly terminates the search."
       },
       "STRENGTH_WEAK": {
         "syntax": ":[KEY]::[VALUE]",
         "description": "Two colons between KEY and VALUE markers.",
-        "behavior": "Pushed to the Tail of the Context Stack. Acts as a fallback. Evaluated after strong definitions in left-to-right search."
+        "behavior": "Pushed to the Tail of the Context Stack. Acts as a fallback. Evaluated after strong definitions in the Left-to-Right search. If it is a BASE position, it terminates the search."
       },
       "PATTERN_TYPE_REGEX": {
         "syntax": "/pattern/",
@@ -111,22 +126,22 @@
         {
           "syntax": ":man::gentleman",
           "description": "Bounded, Weak, Literal Key, Literal Value.",
-          "outcome": "Fallback: if no strong `:man:...` exists, `<man>` outputs `gentleman`."
+          "outcome": "Fallback: if no strong `:man:...` definition exists, `<man>` outputs `gentleman`."
         },
         {
-          "syntax": ":<dark: light",
+          "syntax": ":<dark:light",
           "description": "Pre-pattern, Strong, Literal Key, Literal Value.",
-          "outcome": "Applied before AST lexing: replaces 'dark' with ' light' in raw input."
+          "outcome": "Applied before AST lexing: replaces 'dark' with 'light' in raw input."
         },
         {
-          "syntax": ":<dark:: light",
+          "syntax": ":<dark::light",
           "description": "Pre-pattern, Weak, Literal Key, Literal Value.",
           "outcome": "Applied before AST lexing with lower priority than strong pre-patterns."
         },
         {
-          "syntax": ":</dark/:/ light/",
+          "syntax": ":</dark/:/light/",
           "description": "Pre-pattern, Strong, Regex Key, Regex Value.",
-          "outcome": "Regex pattern matching; replaces matched 'dark' with the literal string ' light'."
+          "outcome": "Regex pattern matching; replaces matched 'dark' with the literal string 'light'."
         },
         {
           "syntax": ":/dark/::/dark themed/",
@@ -144,7 +159,7 @@
           "outcome": "Applied after AST resolution: collapses multiple spaces into single space."
         },
         {
-          "syntax": ":>/old/:: old",
+          "syntax": ":>/old/::old",
           "description": "Post-pattern, Weak, Regex Key, Literal Value.",
           "outcome": "Applied after AST resolution with lower priority; acts as cleanup fallback."
         }
@@ -171,7 +186,7 @@
         "syntax": "<key|:arg1::val1>",
         "context": "Inline text.",
         "description": "Same as parameterized, but using a double colon `::` for the argument definition.",
-        "behavior": "Pushes `arg1` as a WEAK definition to local scope.",
+        "behavior": "Pushes `arg1` as a WEAK definition to local scope, evaluates `<key>`, then pops `arg1`.",
         "example": "<subject|:color::yellow>",
         "outcome": "Evaluates `subject` with `color` as `yellow` ONLY IF no higher-priority definition exists."
       },
@@ -179,7 +194,7 @@
         "syntax": "<key:value>",
         "context": "Inline text.",
         "description": "A literal key and literal value separated by a single colon, enclosed in angle brackets.",
-        "behavior": "Simultaneously pushes `key:value` as a STRONG definition (Tail of stack) and resolves the AST node to `value`.",
+        "behavior": "Simultaneously pushes `key:value` as a STRONG definition (Head of stack) and resolves the AST node to `value`.",
         "example": "The <man:gentleman> arrived.",
         "outcome": "Outputs 'The gentleman arrived' and registers `man:gentleman` as a strong definition for subsequent sibling nodes."
       },
@@ -190,6 +205,14 @@
         "behavior": "Simultaneously pushes `key:value` as a WEAK definition (Head of stack) and resolves the AST node to `value`.",
         "example": "The <man::guy> arrived.",
         "outcome": "Outputs 'The guy arrived' and registers `man:guy` as a weak definition for subsequent sibling nodes."
+      },
+      "ANONYMOUS_ESCAPE_BLOCK": {
+        "syntax": "</.../>",
+        "context": "Inline text.",
+        "description": "An invocation where the key is wrapped exactly in forward slashes, containing standard Python string escape sequences.",
+        "behavior": "Bypasses the Context Stack lookup. Strips the outer slashes and decodes the inner payload using Python's native unicode_escape to safely resolve literal bytes (like newlines or tabs) at evaluation time.",
+        "example": "Line one.</\\n/>Line two.",
+        "outcome": "Outputs 'Line one.' followed by an actual newline character, then 'Line two.'"
       }
     },
     "4_SCOPE_CONTROL": {
@@ -197,7 +220,7 @@
         "syntax": "<key|<MacroA>|<MacroB>>",
         "context": "Inline text, wrapping multiple invocations.",
         "description": "A key, followed by a pipe `|`, followed by invocations separated by pipes, enclosed in angle brackets.",
-        "behavior": "The `|` suppresses standard `ENTER_SCOPE`/`EXIT_SCOPE` markers from `MACRO` invocations. Macros share a continuous local scope block. `MacroA` is evaluated first, then `MacroB`, with any definitions from `MacroA` still active during `MacroB` evaluation, continuing for any further invocations, then finally `key` is resolved with the context intact.",
+        "behavior": "The `|` hoists standard `ENTER_SCOPE`/`EXIT_SCOPE` behavior from `MACRO` invocations. Macros share a continuous local scope block. `MacroA` is evaluated first, then `MacroB`, with any definitions from `MacroA` still active during `MacroB` evaluation, continuing for any further invocations, then finally `key` is resolved with the context intact.",
         "example": "<photo|<SetNumber>|<SetObject>>",
         "outcome": "Definitions hoisted by `<SetNumber>` remain active and accessible during `<SetObject>` evaluation, then definitions from both are active during `<photo>` evaluation, popping only when the outer `< >` terminates."
       },
@@ -205,7 +228,7 @@
         "syntax": "<|<MacroA>|<MacroB>>",
         "context": "Inline text, wrapping multiple invocations.",
         "description": "An opening angle bracket followed immediately by a pipe `|`, followed by macro invocations separated by pipes, closed by an angle bracket.",
-        "behavior": "The empty string before the first `|` suppresses standard `ENTER_SCOPE`/`EXIT_SCOPE` markers on the outer `<>` block as well as on `MacroA` and `MacroB`. The definitions from `MacroA` and `MacroB` remain active and accessible during the evaluation of the invoking node.",
+        "behavior": "The empty string before the first `|` hoists standard `ENTER_SCOPE`/`EXIT_SCOPE` behavior on the outer `<>` block as well as on `MacroA` and `MacroB`. The definitions from `MacroA` and `MacroB` remain active and accessible during the evaluation of the invoking node.",
         "example": "<|<SetColors>>A <ColorA> hat and <ColorB> coat.",
         "outcome": "Definitions hoisted by `<SetColors>` remain active and accessible during later evaluations, popping only when the current node terminates."
       },
@@ -221,7 +244,7 @@
         "syntax": "<key|:>/pattern/:replacement>",
         "context": "Inline text.",
         "description": "Same as the Parameterized Invocation, but with an unbounded replacement.",
-        "behavior": "Adds the pattern-replacement definition to the scoped context then evaluates `<key>`.",
+        "behavior": "Adds the pattern-replacement definition to the internally scoped context then evaluates `<key>`, finally popping the definition.",
         "example": "<myDog|:>dog:cat> saw their dogs.",
         "outcome": "Evaluates as `My friendly pet cat saw their dogs.`, with the pattern applying to the <myDog> invocation but not elsewhere."
       }
@@ -304,12 +327,6 @@
         "status": "Deferred to V2",
         "description": "A leading integer (or range) prefixed with a dollar sign `$`, followed by standard quantity modifiers.",
         "behavior": "Restricting the PRNG pool to specific indices of the provided options before selection."
-      },
-      "CONTEXT_APPEND_OPERATOR": {
-        "syntax": ":|",
-        "status": "Deferred to V2",
-        "description": "A colon followed by a pipe.",
-        "behavior": "Concatenating a new value to an existing key array rather than standard priority shadowing."
       }
     }
   }

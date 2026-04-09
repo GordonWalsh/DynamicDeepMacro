@@ -43,24 +43,16 @@ To solve the paradox of malformed brackets (e.g., `< { > }`), the Lexer employs 
 
 * * * *
 
-3\. Phase B: Parsing & Structural Generation (The Parser)
----------------------------------------------------------
+### Polymorphic AST Generation & The Grandchild Trap
 
-The Parser acts as a Factory. It receives a flat list of zero-depth `Token` objects from the Lexer and maps them into a structural container.
+**Trap Avoided:** *Leaving raw `Token` objects for the Evaluator to process procedurally, AND creating unnecessary dummy wrapper nodes.*
 
-### Polymorphic AST Generation (Avoiding Primitive Obsession)
-
-**Trap Avoided:** *Leaving raw `Token` objects for the Evaluator to process procedurally.*
-
-To keep the Evaluator lean, the Parser converts every execution token into a strongly typed subclass of a base `ASTNode`. Each node encapsulates its own execution logic via an `.evaluate(context)` method.
+To keep the Evaluator lean, the Parser converts every execution token into a strongly typed subclass of a base `ASTNode`. However, to avoid the "Grandchild Trap" (wrapping every expanded macro in a dummy `BlockNode` just to manage scope), the Parser does not return a single root node. Instead, it returns a flat `Tuple[List[Definition], List[ASTNode]]`.
 
 -   `LITERAL` tokens become `LiteralNode`s.
-
 -   `INVOCATION` tokens become `InvocationNode`s.
-
--   `MULTI_VALUE` tokens become `MultiValueNode`s.
-
--   Everything is wrapped in a `BlockNode` representing the current scope.
+-   `GROUP` tokens become `GroupNode`s.
+-   The boilerplate scope lifecycle (push definitions → iterate children → pop definitions) is abstracted into a protected base class method (`ASTNode._evaluate_scope()`). This keeps the AST perfectly flat and prevents duplicated `for`-loops across different node types.
 
 ### Scope Hoisting (The Footnote Architecture)
 
@@ -68,9 +60,10 @@ To keep the Evaluator lean, the Parser converts every execution token into a str
 
 Parsing is deterministic; evaluation is path-dependent (randomized). If the Parser pushed definitions to the global context while building the tree, discarded PRNG branches would leak state.
 
--   **The Solution:** The Parser cleanly separates State from Data. It identifies all `DEFINITION` tokens at the zero-depth level, converts them into standard Data Objects (not AST nodes), and stores them in a `local_definitions` list attached to the `BlockNode`.
+-   **The Solution:** The Parser cleanly separates State from Data. It identifies all `DEFINITION` tokens at the zero-depth level, converts them into standard Data Objects (not AST nodes), and returns them in the `local_definitions` list of its output Tuple.
+-   This allows users to write massive blocks of variable definitions at the very bottom of their text (like footnotes). The `_evaluate_scope()` method pushes these to the Context Stack exactly when the node evaluates, without prematurely mutating state.
 
--   This allows users to write massive blocks of variable definitions at the very bottom of their text (like footnotes); the Parser logically groups them so they are ready for the Evaluator, without prematurely executing them.
+**State Cleanup Guarantee:** When `_evaluate_scope()` pushes to the Context Stack, it tracks the integer count of its pushes. It uses a `try...finally` block to execute exact `popleft()` and `pop()` counts when exiting the scope, completely resolving the "Pop Paradox" and ensuring zero state leakage.
 
 * * * *
 
@@ -87,13 +80,26 @@ Definitions are scoped contextually. The stack uses a Double-Ended Queue (Deque)
 
 -   **Weak Definitions (`::`):** Pushed to the TAIL (Right). Act as global defaults.
 
-### The Orthogonal Syntax Matrix
+### The 3D Orthogonal Syntax Matrix
 
-The engine completely decouples "When to apply" (Class) from "How to apply" (Action).
+The engine completely decouples the definition syntax into three independent dimensions: **Class**, **Position**, and **Strength**. This allows fully combinatorial, modular definition logic.
 
--   **Classes:** Bounded Macro (`:`), Unbounded Pre-Pattern (`:<`), Unbounded Post-Pattern (`:>`).
+1.  **Class (When does this apply? - Start Marker):**
+    -   `:` -> Bounded Macro (Explicit invocation keys)
+    -   `:<` -> Unbounded Pre-Pattern (Applied before parsing)
+    -   `:>` -> Unbounded Post-Pattern (Applied after evaluation)
+2.  **Position (Where does the value go? - Concat Vector):**
+    -   *[Empty]* -> Base Terminator (Overwrites/Sets the root value)
+    -   `<` -> Left-Concat (Prepends to the base/match)
+    -   `>` -> Right-Concat (Appends to the base/match)
+3.  **Strength (Stack Priority - Override Level):**
+    -   `:` -> Strong (Pushed to HEAD, evaluated first, acts as local override)
+    -   `::` -> Weak (Pushed to TAIL, evaluated last, acts as global fallback)
 
--   **Actions:** Base Terminator (`:` / `::`), Left-Concat (`<:`), Right-Concat (`>:`).
+*Example Combinations:*
+-   `:key:value` (Bounded, Base, Strong)
+-   `:<pattern<::prefix` (Pre-Pattern, Left-Concat, Weak)
+-   `:>pattern>:suffix` (Post-Pattern, Right-Concat, Strong)
 
 ### The Search-Terminating Dual-Accumulator
 
@@ -101,7 +107,7 @@ The engine completely decouples "When to apply" (Class) from "How to apply" (Act
 
 -   **The Solution:** Array building happens silently in the Context Stack search phase.
 
--   When a key is requested, the stack searches **Right-to-Left (Tail-to-Head / Weakest-to-Strongest)**.
+-   When a key is requested, the stack searches **Left-to-Right (Head-to-Tail / Strongest-to-Weakest)**.
 
 -   It accumulates any Left-Concat (`<:`) or Right-Concat (`>:`) definitions it finds into a running list.
 
@@ -120,7 +126,7 @@ Unlike Bounded Macros (which have explicit string keys), Unbounded Patterns are 
 5\. Phase D: Evaluation & Execution (The Evaluator)
 ---------------------------------------------------
 
-The Evaluator is the orchestrator. It receives a `BlockNode` and recursively calls `.evaluate()` down the tree, manipulating the Context Stack as it enters and exits scopes.
+The Evaluator is the orchestrator. It receives the parsed tuple of `(local_definitions, child_nodes)` and executes them using the `ASTNode._evaluate_scope()` base method, recursively stepping down the tree and manipulating the Context Stack as it enters and exits scopes.
 
 ### Path-Hashed PRNG Determinism
 
@@ -132,7 +138,7 @@ To guarantee that a specific randomized prompt yields the exact same output ever
 
 ### The Bounded Token Lifecycle (List Reduction)
 
-The execution logic for an `InvocationNode` and a `MultiValueNode` is nearly identical, achieving massive code reuse. When evaluated, they execute this exact sequence:
+The execution logic for an `InvocationNode` and a `GroupNode` is nearly identical, achieving massive code reuse. When evaluated, they execute this exact sequence:
 
 1.  **Extraction:** Separate the modifier (`2$$`) from the payload.
 
@@ -176,6 +182,8 @@ When the Context Stack returns the list of concatenated definitions (from the Du
 
 -   If true, it bypasses the Context Stack entirely, strips the slashes, decodes the Unicode escape natively, and returns the literal character. This allows escapes to be dynamically generated by macros while remaining perfectly sandboxed from standard text.
 
+To prevent the Slash Collision Trap, the engine treats standard escape sequences (like `\n`, `\t` in `C:\new_folder`) as raw literal text. Escape characters are _only_ parsed and stripped if they immediately precede a custom engine syntax marker (e.g., `\:` or `\<`). Standard escapes only execute natively inside the Late-Binding `</.../>` sandbox or within explicitly delimited `/ /` regex patterns.
+
 6\. Additional Technical Definitions & Paradigms
 ------------------------------------------------
 
@@ -189,9 +197,10 @@ This is the distilled, expert-level encapsulation of the engine's fundamental pr
 
 #### 2: Parsing & Structural Paradigms
 
+*   **The Grandchild Trap & Base Template Pattern:** The architectural realization that returning parsed sub-trees wrapped in dummy "Block Nodes" creates unnecessary memory bloat and deepens the call stack. Instead, the Parser returns a flat Tuple, and the shared scope-management lifecycle is natively inherited via `ASTNode._evaluate_scope()`.
 *   **Breadth-Eager / Depth-Lazy Parsing:** The engine eagerly builds a polymorphic AST for the current zero-depth scope, but strictly treats all nested macro/group contents as inert raw strings until explicitly invoked.
 *   **Polymorphic AST Generation:** The parser functions as a Factory, mapping lexed tokens to strongly typed objects (LiteralNode, InvocationNode) that encapsulate their own evaluate(context) logic to prevent primitive-obsession in the Evaluator.
-*   **Scope Hoisting (Footnote Architecture):** The structural decoupling of State (Definitions) from Data (Outputs) during parsing, allowing definitions to be position-independent within their block without mutating the global context pre-maturely.
+*   **Scope Hoisting (Footnote Architecture):** The structural decoupling of State (Definitions) from Data (Outputs) during parsing, allowing definitions to be position-independent within their block. They are hoisted into an isolated array and only pushed to the Context Stack exactly when that specific scope is actively evaluated.
 
 #### 3: Execution & Evaluation Paradigms
 
@@ -205,6 +214,6 @@ This is the distilled, expert-level encapsulation of the engine's fundamental pr
 
 *   **LIFO Dual-Accumulator Context Deque:** The state engine architecture where definitions are pushed Strong-to-Head and Weak-to-Tail.
 *   **Search-Terminating Accumulator Search:** The Context Stack lookup algorithm that traverses the deque Tail-to-Head (Strongest-to-Weakest), accumulating Left/Right directional definitions until it strikes a Base terminator, cleanly resolving shadowing and array extension.
-*   **Orthogonal Syntax Matrix:** The complete decoupling of Pattern Class (Bounded :, Unbounded :>, :<) from Pattern Action (Base :, Append >:, <:), allowing fully combinatorial definition logic.
+*   **3D Orthogonal Syntax Matrix:** The complete dimensional decoupling of a definition's **Class** (Bounded `:`, Unbounded Pre `:<`, Unbounded Post `:>`), **Position** (Base *empty*, Left `<`, Right `>`), and **Strength** (Strong `:`, Weak `::`), allowing infinitely scalable, combinatorial definition logic without hardcoding specific syntax groupings.
 *   **Regex Identity Trap Avoidance:** The rule that Bounded Macros accumulate via exact string matching, while Unbounded Pre/Post Patterns are treated as discrete, non-accumulating sequential passes to prevent capture-group paradoxes.
 *   **Shorthand Pattern Injection:** The automated AST behavior where applying directional accumulation (<:, >:) to an Unbounded Pattern implicitly injects the regex \\g<0> token, shielding the user from backreference syntax.
