@@ -44,7 +44,7 @@ class TestLexer(unittest.TestCase):
         self.assertEqual(result, expected)
 
     def test_multiple_boundary_types(self):
-        """Verify handling of multiple boundary types with priority."""
+        """Verify handling of multiple boundary types."""
         result = lex(r'hello <world> and {test} end')
         expected = wrap_tokens([(r'hello ', TokenType.LITERAL), (r'<world>', TokenType.INVOCATION), (r' and ', TokenType.LITERAL), (r'{test}', TokenType.GROUP), (r' end', TokenType.LITERAL)])
         self.assertEqual(result, expected)
@@ -160,6 +160,92 @@ class TestLexer(unittest.TestCase):
         expected = wrap_tokens([(r'{<b> }', TokenType.GROUP)])
         self.assertEqual(result, expected)
 
+class TestDiscreteTokens(unittest.TestCase):
+    """Test suite for discrete (unpaired) zero-depth markers like | and $$."""
+
+    def test_zero_depth_split(self):
+        """Verify | is detected at the top level."""
+        result = lex(r'A | B | C')
+        expected = wrap_tokens([
+            (r'A ', TokenType.LITERAL),
+            (r'|', TokenType.SPLIT),
+            (r' B ', TokenType.LITERAL),
+            (r'|', TokenType.SPLIT),
+            (r' C', TokenType.LITERAL)
+        ])
+        self.assertEqual(result, expected)
+
+    def test_discrete_culling_inside_boundaries(self):
+        """Verify discrete markers are neutralized when inside higher-order boundaries."""
+        # Split inside Invocation
+        result1 = lex(r'<foo | bar>')
+        self.assertEqual(result1, wrap_tokens([(r'<foo | bar>', TokenType.INVOCATION)]))
+
+        # Split inside Group
+        result2 = lex(r'{a | b}')
+        self.assertEqual(result2, wrap_tokens([(r'{a | b}', TokenType.GROUP)]))
+        
+        # Modifier inside Group
+        result3 = lex(r'{2$$foo}')
+        self.assertEqual(result3, wrap_tokens([(r'{2$$foo}', TokenType.GROUP)]))
+
+    def test_zero_depth_modifier(self):
+        """Verify $$ is detected correctly at the top level."""
+        result = lex(r'2$$<key>')
+        expected = wrap_tokens([
+            (r'2', TokenType.LITERAL),
+            (r'$$', TokenType.MODIFIER),
+            (r'<key>', TokenType.INVOCATION)
+        ])
+        self.assertEqual(result, expected)
+
+    def test_escaped_discrete_markers(self):
+        """Verify (single) \\| prevents split tokenization."""
+        result = lex(r'a \| b')
+        self.assertEqual(result, wrap_tokens([(r'a \| b', TokenType.LITERAL)]))
+
+class TestDefinitionTokens(unittest.TestCase):
+    """Test suite for Definition tokens, including EOL and Multi-line Blocks."""
+
+    def test_eol_definition(self):
+        """Verify standard definitions terminate at the newline."""
+        result = lex(":key:value\nNext line")
+        expected = wrap_tokens([
+            (":key:value", TokenType.DEFINITION),
+            ("\nNext line", TokenType.LITERAL)
+        ])
+        self.assertEqual(result, expected)
+
+    def test_multi_line_block_definition(self):
+        """Verify << >> wraps multiple lines and ignores EOL."""
+        text = ":key:<<\nLine 1\nLine 2\n>>\nTrailing"
+        result = lex(text)
+        expected = wrap_tokens([
+            (":key:<<\nLine 1\nLine 2\n>>", TokenType.DEFINITION),
+            ("\nTrailing", TokenType.LITERAL)
+        ])
+        self.assertEqual(result, expected)
+
+    def test_nested_blocks_inside_definition(self):
+        """Verify the pushdown automaton tracks nested << >>."""
+        text = ":outer:<<\n:inner:<<\nnested\n>>\n>>"
+        result = lex(text)
+        self.assertEqual(result, wrap_tokens([(text, TokenType.DEFINITION)]))
+
+    def test_definition_culling(self):
+        """Verify definitions are neutralized if inside a higher boundary."""
+        # EOL def inside an Invocation
+        result1 = lex("<foo :key:val>")
+        self.assertEqual(result1, wrap_tokens([("<foo :key:val>", TokenType.INVOCATION)]))
+        
+        # Block def inside a Group
+        result2 = lex("{ :key:<<val>> }")
+        self.assertEqual(result2, wrap_tokens([("{ :key:<<val>> }", TokenType.GROUP)]))
+
+    def test_inline_colon_ignored(self):
+        """Verify standard text colons do not trigger definitions."""
+        result = lex("Time: 12:00")
+        self.assertEqual(result, wrap_tokens([("Time: 12:00", TokenType.LITERAL)]))
 
 # class TestMacroEngine(unittest.TestCase):
     # def setUp(self):

@@ -10,7 +10,7 @@ Core Architecture:
 - O(N) linear time complexity via single-pass index tracking.
 - Zero-Depth Interval Culling: Neutralizes token boundaries that fall strictly 
   inside higher-order execution contexts (e.g., `< >` or `<< >>`).
-- Selective Escape Stripping: Backslashes (\) only act as escapes when 
+- Selective Escape Stripping: Backslashes (single \\) only act as escapes when 
   immediately preceding custom structural syntax markers.
 - Token generation mapped to specific `TokenType` enums.
 """
@@ -37,13 +37,14 @@ def lex(text: str) -> List[Token]:
     
     i = 0
     n = len(text)
-    
-    # Pass 1: Interval Tracking
+
+# Pass 1: Interval Tracking
     while i < n:
         char = text[i]
         
         # Selective Escaping: Skip explicitly escaped syntax markers
-        if char == '\\' and i + 1 < n and text[i+1] in '<>{}':
+        # (Added '|' to the escape whitelist)
+        if char == '\\' and i + 1 < n and text[i+1] in '<>{}|':
             i += 2
             continue
             
@@ -59,7 +60,16 @@ def lex(text: str) -> List[Token]:
             if groups:
                 start = groups.pop()
                 candidates.append((start, i, TokenType.GROUP))
-        
+                
+        # --- NEW DISCRETE MARKERS ---
+        elif char == '|':
+            # Discrete token: start and end index are identical
+            candidates.append((i, i, TokenType.SPLIT))
+        elif char == '$' and i + 1 < n and text[i+1] == '$':
+            # Two-character discrete token
+            candidates.append((i, i + 1, TokenType.MODIFIER))
+            i += 1  # Skip the second '$' so we don't process it twice
+            
         i += 1
 
 # Pass 2: Topological Zero-Depth Interval Culling

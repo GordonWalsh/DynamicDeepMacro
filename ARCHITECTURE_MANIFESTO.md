@@ -132,7 +132,6 @@ The Evaluator is the orchestrator. It receives the parsed tuple of `(local_defin
 To guarantee that a specific randomized prompt yields the exact same output every time a specific seed is used---even if the prompt is heavily branched---the random state cannot rely on a global counter.
 
 - Every time an `ASTNode` evaluates a child, it creates a unique seed for that child by hashing its own seed with the child's index (`Hash(parent_seed + "_child_0")`).
-
 - This perfectly isolates sibling tree branches. Modifying one part of a prompt will not butterfly-effect the random rolls of an unrelated branch.
 
 ### The Bounded Token Lifecycle (List Reduction)
@@ -140,19 +139,12 @@ To guarantee that a specific randomized prompt yields the exact same output ever
 The execution logic for an `InvocationNode` and a `GroupNode` is nearly identical, achieving massive code reuse. When evaluated, they execute this exact sequence:
 
 1. **Extraction:** Separate the modifier (`2$$`) from the payload.
-
         - *Multi-Value:* Payload is the raw inline string.
-
         - *Invocation:* Payload is retrieved via the Context Stack lookup.
-
 2. **Lexing:** Pass the payload string back to the Lexer to find zero-depth `SPLIT` tokens (`|`).
-
 3. **Bucketing:** Slice the resulting Token list into separate Option Buckets based on the splits.
-
 4. **Reduction:** Apply the modifier logic (e.g., pick 2 random buckets). **Destroy all other buckets.**
-
 5. **Recursive Parsing:** Pass the concatenated winning tokens to the Parser to build the child `ASTNode`s.
-
 6. **Execution:** Call `.evaluate()` on the new children.
 
 **Trap Avoided:** *Splitting strings before Lexing.* Using Python's `.split('|')` would shatter nested syntax like `<Macro | param:val>`. The Lexer must identify the safe boundaries first.
@@ -191,7 +183,7 @@ This is the distilled, expert-level encapsulation of the engine's fundamental pr
 
 - **Interval-Tracking Speculative Lexer:** A zero-copy lexical scanner that records token boundaries as integer start/end pairs rather than buffering string slices, ensuring $O(N)$ linear time complexity.
 - **Zero-Depth Interval Culling:** The resolution algorithm that discards any registered token boundaries that fall strictly within the bounds of a higher-order hierarchy marker, safely neutralizing unbalanced brackets and natively protecting nested syntax.
-- **Boundary vs. Discrete Tokenization:** The distinction between paired contextual markers (< >, { }) which require pushdown-automata tracking, and zero-depth singular markers (|, $$) which are registered instantly.
+- **Boundary vs. Discrete Tokenization:** The distinction between paired contextual markers (`< >`, `{ }`) which require pushdown-automata tracking, and zero-depth singular markers (`|`, `$$`) which are registered instantly.
 
 ### 2: Parsing & Structural Paradigms
 
@@ -214,4 +206,4 @@ This is the distilled, expert-level encapsulation of the engine's fundamental pr
 - **Search-Terminating Accumulator Search:** The Context Stack lookup algorithm that traverses the deque Tail-to-Head (Strongest-to-Weakest), accumulating Left/Right directional definitions until it strikes a Base terminator, cleanly resolving shadowing and array extension.
 - **3D Orthogonal Syntax Matrix:** The complete dimensional decoupling of a definition's **Class** (Bounded `:`, Unbounded Pre `:<`, Unbounded Post `:>`), **Position** (Base *empty*, Left `<`, Right `>`), and **Strength** (Strong `:`, Weak `::`), allowing infinitely scalable, combinatorial definition logic without hardcoding specific syntax groupings.
 - **Regex Identity Trap Avoidance:** The rule that Bounded Macros accumulate via exact string matching, while Unbounded Pre/Post Patterns are treated as discrete, non-accumulating sequential passes to prevent capture-group paradoxes.
-- **Shorthand Pattern Injection:** The automated AST behavior where applying directional accumulation (<:, >:) to an Unbounded Pattern implicitly injects the regex \\g<0> token, shielding the user from backreference syntax.
+- **Shorthand Pattern Injection:** The automated AST behavior where applying directional accumulation (`<:`, `>:`) to an Unbounded Pattern implicitly injects the regex `\g<0>` token, shielding the user from backreference syntax.
