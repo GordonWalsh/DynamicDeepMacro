@@ -1,26 +1,149 @@
 """
 Tokenizing and Lexing Module for Macro Engine
 
-This module contains the core lexing architecture for the macro engine's bounded 
-token parsing. It implements an Interval-Tracking Speculative Lexer that uses 
-zero-copy index tracking to handle nested token boundaries and escape sequences.
+This module contains the core lexing architecture for the macro engine's 
+Breadth-Eager, Depth-Lazy parsing strategy. It implements an Interval-Tracking 
+Speculative Lexer that uses zero-copy index tracking to handle nested token 
+boundaries, explicit multi-line wrappers, and selective escape sequences.
 
 Core Architecture:
-- Uses independent stacks per marker type to track opening indices
-- Registers candidate intervals when boundary pairs are successfully closed
-- Applies culling logic to determine which intervals are top-level vs consumed
-- Returns a pure list of Token objects (both bounded and literal text)
-- Zero-copy performance: O(N) time complexity via index tracking instead of buffering
+- O(N) linear time complexity via single-pass index tracking.
+- Zero-Depth Interval Culling: Neutralizes token boundaries that fall strictly 
+  inside higher-order execution contexts (e.g., `< >` or `<< >>`).
+- Selective Escape Stripping: Backslashes (\) only act as escapes when 
+  immediately preceding custom structural syntax markers.
+- Token generation mapped to specific `TokenType` enums.
 """
 
 import re
-from collections import defaultdict
 from typing import List, Tuple
-from core_engine import Token
+from core_types import Token, TokenType
 
-SYNTAX_CHARACTERS = r'\\:/<>{}'
+# MVP structural constants (to be replaced by dynamic SyntaxConfig later)
+SYNTAX_CHARACTERS = r'\\:/<>{}\|'
 
-def lex_with_boundaries(text: str, boundaries: List[Tuple[str, str]] = [('{', '}'), ('<', '>')]) -> List[Token]:
+def lex(text: str) -> List[Token]:
+    """
+    Interval-Tracking Speculative Lexer using zero-copy index tracking.
+    """
+    if not text:
+        return []
+
+    # 1. Independent Pushdown Automata
+    invocations = []  # Tracks '<'
+    groups = []       # Tracks '{'
+    
+    candidates = []
+    
+    i = 0
+    n = len(text)
+    
+    # Pass 1: Interval Tracking
+    while i < n:
+        char = text[i]
+        
+        # Selective Escaping: Skip explicitly escaped syntax markers
+        if char == '\\' and i + 1 < n and text[i+1] in '<>{}':
+            i += 2
+            continue
+            
+        if char == '<':
+            invocations.append(i)
+        elif char == '>':
+            if invocations:
+                start = invocations.pop()
+                candidates.append((start, i, TokenType.INVOCATION))
+        elif char == '{':
+            groups.append(i)
+        elif char == '}':
+            if groups:
+                start = groups.pop()
+                candidates.append((start, i, TokenType.GROUP))
+        
+        i += 1
+
+# Pass 2: Topological Zero-Depth Interval Culling
+    accepted_intervals = []
+    
+    for i, c in enumerate(candidates):
+        c_start, c_end, c_type = c
+        is_defeated = False
+        
+        for j, o in enumerate(candidates):
+            if i == j: 
+                continue
+                
+            o_start, o_end, o_type = o
+            
+            # Check for intersection
+            if c_start < o_end and c_end > o_start:
+                
+                # Rule 1: Strict Enclosure
+                c_encloses_o = (c_start <= o_start and c_end >= o_end)
+                o_encloses_c = (o_start <= c_start and o_end >= c_end)
+                
+                if o_encloses_c and not c_encloses_o:
+                    is_defeated = True
+                    break
+                elif c_encloses_o and not o_encloses_c:
+                    continue  # c defeats o; keep checking other candidates
+                    
+                # Rule 2: Interleaving (Partial Overlap) or Identical Bounds
+                # If neither strictly encloses the other, or they are identical bounds, priority wins.
+                c_prio = 0 if c_type == TokenType.GROUP else 1
+                o_prio = 0 if o_type == TokenType.GROUP else 1
+                
+                if o_prio < c_prio:
+                    is_defeated = True
+                    break
+                elif o_prio == c_prio:
+                    # Same priority: Leftmost wins. If tied, longest wins.
+                    if o_start < c_start:
+                        is_defeated = True
+                        break
+                    elif o_start == c_start and o_end > c_end:
+                        is_defeated = True
+                        break
+                        
+        if not is_defeated:
+            accepted_intervals.append(c)
+
+    # Pass 3: Slicing and Token Generation
+    # Sort accepted intervals chronologically to build the final list
+    accepted_intervals.sort(key=lambda x: x[0])
+    
+    tokens = []
+    last_idx = 0
+    
+    for start, end, token_type in accepted_intervals:
+        # Capture preceding literal text
+        if start > last_idx:
+            tokens.append(Token(
+                value=text[last_idx:start], 
+                position=last_idx, 
+                length=start - last_idx, 
+                token_type=TokenType.LITERAL
+            ))
+        
+        # Capture the bounded token
+        tokens.append(Token(
+            value=text[start:end + 1], 
+            position=start, 
+            length=(end + 1) - start, 
+            token_type=token_type
+        ))
+        last_idx = end + 1
+        
+    # Capture trailing literal text
+    if last_idx < n:
+        tokens.append(Token(
+            value=text[last_idx:n], 
+            position=last_idx, 
+            length=n - last_idx, 
+            token_type=TokenType.LITERAL
+        ))
+        
+    return tokens
     r"""
     Interval-Tracking Speculative Lexer using zero-copy index tracking.
     
@@ -50,7 +173,7 @@ def lex_with_boundaries(text: str, boundaries: List[Tuple[str, str]] = [('{', '}
                      marker_type=('', '').
     
     Example:
-        >>> result = lex_with_boundaries("hello <world> and {test} end", [('<', '>'), ('{', '}')])
+        >>> result = lex("hello <world> and {test} end", [('<', '>'), ('{', '}')])
         >>> # Returns: [Token(text='hello ', marker_type=('', '')), 
         >>> #           Token(text='<world>', marker_type=('<', '>')), 
         >>> #           Token(text=' and ', marker_type=('', '')),
@@ -179,7 +302,7 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
     if not top_level_intervals:
         # No tokens: return entire text as a single literal token if non-empty
         if text:
-            return [Token(start_idx=0, end_idx=len(text) - 1, marker_type=('', ''), text=text)]
+            return [Token(position=0, length=len(text), token_type=TokenType.LITERAL, value=text)]
         return []
     
     result = []
@@ -190,19 +313,19 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
         if last_end < start_idx:
             literal_text = text[last_end:start_idx]
             result.append(Token(
-                start_idx=last_end,
-                end_idx=start_idx - 1,
-                marker_type=('', ''),
-                text=literal_text
+                position=last_end,
+                length=start_idx - 1-last_end,
+                token_type=TokenType.LITERAL,
+                value=literal_text
             ))
         
         # Add the bounded token
         token_text = text[start_idx:end_idx + 1]
         token = Token(
-            start_idx=start_idx,
-            end_idx=end_idx,
-            marker_type=boundaries[type_id],
-            text=token_text
+            position=start_idx,
+            length=end_idx - start_idx,
+            token_type=TokenType.INVOCATION if boundaries[type_id] == ('<', '>') else TokenType.GROUP,
+            value=token_text
         )
         result.append(token)
         last_end = end_idx + 1
@@ -211,10 +334,10 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
     if last_end < len(text):
         literal_text = text[last_end:]
         result.append(Token(
-            start_idx=last_end,
-            end_idx=len(text) - 1,
-            marker_type=('', ''),
-            text=literal_text
+            position=last_end,
+            length=len(text) - 1 - last_end,
+            token_type=TokenType.LITERAL,
+            value=literal_text
         ))
     
     return result

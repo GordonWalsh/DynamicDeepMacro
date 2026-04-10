@@ -18,8 +18,8 @@ def wrap_tokens(items: List[Tuple[str,TokenType]] = None):
         List of Token objects, with strings converted to typed tokens
     """
     result = []
-    for item in enumerate(items):
-        result.append(Token(value=item[0], position=0, length=0, token_type=item[1] if item[1] else TokenType.LITERAL))
+    for item in items:
+        result.append(Token(value=item[0], position=0, length=0, token_type=(item[1] if item[1] else TokenType.LITERAL)))
     return result
 
 
@@ -29,7 +29,7 @@ class TestLexer(unittest.TestCase):
     def test_literal_text_only(self):
         """Verify that plain text with no boundaries is returned as a single element."""
         result = lex(r'hello world')
-        self.assertEqual(result, wrap_tokens([(r'hello world',TokenType.LITERAL)]))
+        self.assertEqual(result, wrap_tokens([(r'hello world', TokenType.LITERAL)]))
 
     def test_single_bounded_token(self):
         """Verify basic bounded token detection with single boundary type."""
@@ -49,124 +49,116 @@ class TestLexer(unittest.TestCase):
         expected = wrap_tokens([(r'hello ', TokenType.LITERAL), (r'<world>', TokenType.INVOCATION), (r' and ', TokenType.LITERAL), (r'{test}', TokenType.GROUP), (r' end', TokenType.LITERAL)])
         self.assertEqual(result, expected)
 
-    # def test_boundary_at_string_start(self):
-    #     """Verify token at the start of the string."""
-    #     result = lex(r'<start> of text')
-    #     expected = wrap_tokens([(r'<start>', TokenType.INVOCATION), (r' of text', TokenType.LITERAL)])
-    #     self.assertEqual(result, expected)
+    def test_boundary_at_string_start(self):
+        """Verify token at the start of the string."""
+        result = lex(r'<start> of text')
+        expected = wrap_tokens([(r'<start>', TokenType.INVOCATION), (r' of text', TokenType.LITERAL)])
+        self.assertEqual(result, expected)
 
-    # def test_boundary_at_string_end(self):
-    #     """Verify token at the end of the string."""
-    #     result = lex(r'end of <text>')
-    #     expected = wrap_tokens([(r'end of ', TokenType.LITERAL), (r'<text>', TokenType.INVOCATION)])
-    #     self.assertEqual(result, expected)
+    def test_boundary_at_string_end(self):
+        """Verify token at the end of the string."""
+        result = lex(r'end of <text>')
+        expected = wrap_tokens([(r'end of ', TokenType.LITERAL), (r'<text>', TokenType.INVOCATION)])
+        self.assertEqual(result, expected)
 
-    # def test_consecutive_boundaries(self):
-    #     """Verify consecutive tokens with no literal text between them."""
-    #     result = lex(r'<first><second>')
-    #     expected = wrap_tokens([(r'<first>', TokenType.INVOCATION), (r'<second>', TokenType.INVOCATION)])
-    #     self.assertEqual(result, expected)
+    def test_consecutive_boundaries(self):
+        """Verify consecutive tokens with no literal text between them."""
+        result = lex(r'<first><second>')
+        expected = wrap_tokens([(r'<first>', TokenType.INVOCATION), (r'<second>', TokenType.INVOCATION)])
+        self.assertEqual(result, expected)
 
-    # def test_nested_boundaries_same_type(self):
-    #     """Verify that nested boundaries of the same type are kept as flat content."""
-    #     result = lex(r'text <outer <inner> content>')
-    #     # <inner> should be treated as literal content, not a separate token
-    #     expected = wrap_tokens([(r'text ', TokenType.LITERAL), (r'<outer <inner> content>', TokenType.INVOCATION)])
-    #     self.assertEqual(result, expected)
+    def test_nested_boundaries_same_type(self):
+        """Verify that nested boundaries of the same type are kept as flat content."""
+        result = lex(r'text <outer <inner> content>')
+        # <inner> should be treated as literal content, not a separate token
+        expected = wrap_tokens([(r'text ', TokenType.LITERAL), (r'<outer <inner> content>', TokenType.INVOCATION)])
+        self.assertEqual(result, expected)
 
-    # def test_nested_boundaries_different_types(self):
-    #     """Verify that mixed nested boundaries are preserved as flat content."""
-    #     result = lex(r'a <outer {inner} content>')
-    #     # {inner} should not trigger a split; it's nested inside <>
-    #     expected = wrap_tokens([(r'a ', TokenType.LITERAL), (r'<outer {inner} content>', TokenType.INVOCATION)])
-    #     self.assertEqual(result, expected)
+    def test_nested_boundaries_different_types(self):
+        """Verify that mixed nested boundaries are preserved as flat content."""
+        result = lex(r'a <outer {inner} content>')
+        # {inner} should not trigger a split; it's nested inside <>
+        expected = wrap_tokens([(r'a ', TokenType.LITERAL), (r'<outer {inner} content>', TokenType.INVOCATION)])
+        self.assertEqual(result, expected)
 
-    # def test_empty_boundary(self):
-    #     """Verify that empty boundaries are kept as valid tokens."""
-    #     result = lex(r'text <> more')
-    #     expected = wrap_tokens([(r'text ', TokenType.LITERAL), (r'<>', TokenType.INVOCATION), (r' more', TokenType.LITERAL)])
-    #     self.assertEqual(result, expected)
+    def test_empty_boundary(self):
+        """Verify that empty boundaries are kept as valid tokens."""
+        result = lex(r'text <> more')
+        expected = wrap_tokens([(r'text ', TokenType.LITERAL), (r'<>', TokenType.INVOCATION), (r' more', TokenType.LITERAL)])
+        self.assertEqual(result, expected)
 
-    # def test_unclosed_boundary_end_of_string(self):
-    #     """Verify that unclosed boundary at end of string is treated as literal."""
-    #     result = lex(r'text unclosed<')
-    #     self.assertEqual(result, wrap_tokens([(r'text unclosed<', TokenType.LITERAL)]))
+    def test_unclosed_boundary_end_of_string(self):
+        """Verify that unclosed boundary at end of string is treated as literal."""
+        result = lex(r'text unclosed<')
+        self.assertEqual(result, wrap_tokens([(r'text unclosed<', TokenType.LITERAL)]))
 
-    # def test_unclosed_boundary_with_following_text(self):
-    #     """Verify that unclosed boundary with following text is emitted as literal."""
-    #     result = lex(r'text <unclosed more')
-    #     self.assertEqual(result, wrap_tokens([(r'text <unclosed more', TokenType.LITERAL)]))
+    def test_unclosed_boundary_with_following_text(self):
+        """Verify that unclosed boundary with following text is emitted as literal."""
+        result = lex(r'text <unclosed more')
+        self.assertEqual(result, wrap_tokens([(r'text <unclosed more', TokenType.LITERAL)]))
 
-    # def test_extra_closing_marker(self):
-    #     """Verify that extra closing markers are treated as literal text."""
-    #     result = lex(r'text > unmatched')
-    #     self.assertEqual(result, wrap_tokens([(r'text > unmatched', TokenType.LITERAL)]))
+    def test_extra_closing_marker(self):
+        """Verify that extra closing markers are treated as literal text."""
+        result = lex(r'text > unmatched')
+        self.assertEqual(result, wrap_tokens([(r'text > unmatched', TokenType.LITERAL)]))
 
-    # def test_escape_opening_marker(self):
-    #     """Verify that escaped opening marker is treated as literal."""
-    #     result = lex(r"text \<not a token\>")
-    #     self.assertEqual(result, wrap_tokens([(r"text \<not a token\>", TokenType.LITERAL)]))
+    def test_escape_opening_marker(self):
+        """Verify that escaped opening marker is treated as literal."""
+        result = lex(r"text \<not a token\>")
+        self.assertEqual(result, wrap_tokens([(r"text \<not a token\>", TokenType.LITERAL)]))
 
-    # def test_escape_closing_marker(self):
-    #     """Verify that escaped closing marker inside token prevents token closure."""
-    #     result = lex(r"text <content\> still inside>")
-    #     expected = wrap_tokens([(r'text ', TokenType.LITERAL), (r"<content\> still inside>", TokenType.INVOCATION)])
-    #     self.assertEqual(result, expected)
+    def test_escape_closing_marker(self):
+        """Verify that escaped closing marker inside token prevents token closure."""
+        result = lex(r"text <content\> still inside>")
+        expected = wrap_tokens([(r'text ', TokenType.LITERAL), (r"<content\> still inside>", TokenType.INVOCATION)])
+        self.assertEqual(result, expected)
 
-    # def test_escape_backslash(self):
-    #     """Verify that escaped backslash is treated as literal."""
-    #     result = lex(r"text \\ not escaped")
-    #     self.assertEqual(result, wrap_tokens([(r"text \\ not escaped", TokenType.LITERAL)]))
+    def test_escape_backslash(self):
+        """Verify that escaped backslash is treated as literal."""
+        result = lex(r"text \\ not escaped")
+        self.assertEqual(result, wrap_tokens([(r"text \\ not escaped", TokenType.LITERAL)]))
 
-    # def test_backslash_before_non_syntax_char(self):
-    #     """Verify that backslash before non-syntax character is kept as-is."""
-    #     result = lex(r"text \a literal")
-    #     self.assertEqual(result, wrap_tokens([(r"text \a literal", TokenType.LITERAL)]))
+    def test_backslash_before_non_syntax_char(self):
+        """Verify that backslash before non-syntax character is kept as-is."""
+        result = lex(r"text \a literal")
+        self.assertEqual(result, wrap_tokens([(r"text \a literal", TokenType.LITERAL)]))
 
-    # def test_default_boundaries(self):
-    #     """Verify that default boundaries are { } and < > with { } priority."""
-    #     result = lex(r'a <b> c {d} e')
-    #     expected = wrap_tokens([(r'a ', TokenType.LITERAL), (r'<b>', TokenType.INVOCATION), (r' c ', TokenType.LITERAL), (r'{d}', TokenType.GROUP), (r' e', TokenType.LITERAL)])
-    #     self.assertEqual(result, expected)
+    def test_default_boundaries(self):
+        """Verify that default boundaries are { } and < > with { } priority."""
+        result = lex(r'a <b> c {d} e')
+        expected = wrap_tokens([(r'a ', TokenType.LITERAL), (r'<b>', TokenType.INVOCATION), (r' c ', TokenType.LITERAL), (r'{d}', TokenType.GROUP), (r' e', TokenType.LITERAL)])
+        self.assertEqual(result, expected)
 
-    # def test_multiple_unclosed_at_end(self):
-    #     """Verify multiple unclosed boundaries are emitted together as literal."""
-    #     result = lex(r'text <unclosed {also')
-    #     self.assertEqual(result, wrap_tokens([(r'text <unclosed {also', TokenType.LITERAL)]))
+    def test_multiple_unclosed_at_end(self):
+        """Verify multiple unclosed boundaries are emitted together as literal."""
+        result = lex(r'text <unclosed {also')
+        self.assertEqual(result, wrap_tokens([(r'text <unclosed {also', TokenType.LITERAL)]))
 
-    # def test_interleaved_boundaries_outer_consumes_inner(self):
-    #     """Verify that when boundaries interleave, the outer boundary consumes the inner."""
-    #     # <foo {bar> } has angle at 0-9, brace at 5-11, brace is consumed by angle
-    #     result = lex(r'<foo {bar> }')
-    #     # Expected: single token <foo {bar> with brace consumed as content, literal " }"
-    #     expected = wrap_tokens([(r'<foo {bar>', TokenType.INVOCATION), (r' }', TokenType.LITERAL)])
-    #     self.assertEqual(result, expected)
-
-    # def test_interleaved_brace_consumes_angle(self):
-    #     """Verify interleaved boundaries with brace priority.
+    def test_interleaved_brace_consumes_angle(self):
+        """Verify interleaved boundaries with brace priority.
         
-    #     String: <a {b> }
-    #     With brace priority, brace [3,7] consumes the < marker.
-    #     Angle < is outside brace token (at 0), > is inside → < becomes literal.
-    #     Expected: literal text <a , brace token {b> }
-    #     """
-    #     result = lex(r'<a {b> }')
-    #     expected = wrap_tokens([(r'<a ', TokenType.LITERAL), (r'{b> }', TokenType.GROUP)])
-    #     self.assertEqual(result, expected)
+        String: <a {b> }
+        With brace priority, brace [3,7] consumes the < marker.
+        Angle < is outside brace token (at 0), > is inside → < becomes literal.
+        Expected: literal text <a , brace token {b> }
+        """
+        result = lex(r'<a {b> }')
+        expected = wrap_tokens([(r'<a ', TokenType.LITERAL), (r'{b> }', TokenType.GROUP)])
+        self.assertEqual(result, expected)
 
-    # def test_interleaved_brace_before_angle(self):
-    #     """Verify interleaved boundaries where brace opens first.
+    def test_interleaved_brace_before_angle(self):
+        """Verify interleaved boundaries where brace opens first.
         
-    #     String: {<b> }
-    #     Brace opens at 0, angle opens at 1, angle closes at 3.
-    #     Brace [0,5] consumes the < marker. No closing > for angle outside brace.
-    #     Expected: brace token {<b>, literal text space (and unpaired >)
-    #     Actually: brace [0,5] = {<b> }, angle [1,3] is inside brace, < inside token, > inside token
-    #     Brace is higher priority in this case.
-    #     """
-    #     result = lex(r'{<b> }')
-    #     expected = wrap_tokens([(r'{<b> }', TokenType.GROUP)])
-    #    self.assertEqual(result, expected)
+        String: {<b> }
+        Brace opens at 0, angle opens at 1, angle closes at 3.
+        Brace [0,5] consumes the < marker. No closing > for angle outside brace.
+        Expected: brace token {<b>, literal text space (and unpaired >)
+        Actually: brace [0,5] = {<b> }, angle [1,3] is inside brace, < inside token, > inside token
+        Brace is higher priority in this case.
+        """
+        result = lex(r'{<b> }')
+        expected = wrap_tokens([(r'{<b> }', TokenType.GROUP)])
+        self.assertEqual(result, expected)
 
 
 # class TestMacroEngine(unittest.TestCase):
