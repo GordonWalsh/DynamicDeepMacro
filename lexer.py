@@ -21,6 +21,7 @@ from core_types import Token, TokenType
 
 # MVP structural constants (to be replaced by dynamic SyntaxConfig later)
 SYNTAX_CHARACTERS = r'\\:/<>{}\|'
+priority = dict({TokenType.DEFINITION: 4, TokenType.GROUP: 3, TokenType.INVOCATION: 2, TokenType.LITERAL: -1})
 
 def lex(text: str) -> List[Token]:
     """
@@ -32,9 +33,9 @@ def lex(text: str) -> List[Token]:
     # 1. Independent Pushdown Automata
     invocations = []  # Tracks '<'
     groups = []       # Tracks '{'
-    
-    candidates = []
-    
+    def_blocks = []   # Tracks '<<'
+    candidates = [] # (idx_first, idx_last, TokenType) Note index OF last char, not after (ie slice end)
+
     i = 0
     n = len(text)
 
@@ -44,10 +45,23 @@ def lex(text: str) -> List[Token]:
         
         # Selective Escaping: Skip explicitly escaped syntax markers
         # (Added '|' to the escape whitelist)
-        if char == '\\' and i + 1 < n and text[i+1] in '<>{}|':
+        if char == '\\' and i + 1 < n and text[i+1] in r'<>{}|$':
             i += 2
             continue
-            
+
+        if def_blocks:#_count > 0:
+            if char == '<' and i + 1 < n and text[i+1] == '<':
+                i += 1  # Skip second <
+                continue
+            elif char == '>' and i + 1 < n and text[i+1] == '>':
+                def_start_idx = def_blocks.pop()
+                end_idx = i + 1
+                if end_idx + 1 < n and text[end_idx + 1] == '\n':
+                    end_idx += 1 # Capture trailing newline
+                candidates.append((def_start_idx, end_idx, TokenType.DEFINITION))
+                i += 1  # Skip second >
+                continue
+
         if char == '<':
             invocations.append(i)
         elif char == '>':
@@ -60,7 +74,9 @@ def lex(text: str) -> List[Token]:
             if groups:
                 start = groups.pop()
                 candidates.append((start, i, TokenType.GROUP))
-                
+        elif char == '\n': # Reset on newlines, not robust around definitions
+            invocations = []
+            groups = []
         # --- NEW DISCRETE MARKERS ---
         elif char == '|':
             # Discrete token: start and end index are identical
@@ -69,7 +85,19 @@ def lex(text: str) -> List[Token]:
             # Two-character discrete token
             candidates.append((i, i + 1, TokenType.MODIFIER))
             i += 1  # Skip the second '$' so we don't process it twice
-            
+        elif char == ':' and i < n - 1 and (i == 0 or text[i-1] == '\n'):
+            def_start_idx = i
+            # Look for a not odd number of slashes then a ':' or '::' (g1), maybe a '<<' (g2), then to end of line/string
+            header_match = re.compile(r'[^:\n]*?(?<!\\)(?:(?:\\\\))*(:{1,2})(<<)?[^\n]*(?:\n|$)').match(text, pos = i+1) # Start matching on next character
+            if header_match: # Found a match, ie a middle :/::
+                candidates.append((i, header_match.end()-1, TokenType.DEFINITION)) # Register an EOL candidate regardless in case the block fails to close
+                if header_match.group(2): # Found a block open marker <<
+                    def_blocks.append(i) # Entering/adding to block definition mode
+                    i=header_match.end(2) # Jump to the end of the block marker
+                else: # No block, single line definition
+                    i=header_match.end(1) # Jump to end of middle marker
+                continue # Skip i += since we already moved to end
+            # else Starting ':' but no middle ':', not a definition
         i += 1
 
 # Pass 2: Topological Zero-Depth Interval Culling
@@ -100,10 +128,9 @@ def lex(text: str) -> List[Token]:
                     
                 # Rule 2: Interleaving (Partial Overlap) or Identical Bounds
                 # If neither strictly encloses the other, or they are identical bounds, priority wins.
-                c_prio = 0 if c_type == TokenType.GROUP else 1
-                o_prio = 0 if o_type == TokenType.GROUP else 1
-                
-                if o_prio < c_prio:
+                c_prio = priority.get(c_type)
+                o_prio = priority.get(o_type)
+                if o_prio > c_prio:
                     is_defeated = True
                     break
                 elif o_prio == c_prio:

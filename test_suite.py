@@ -209,43 +209,78 @@ class TestDefinitionTokens(unittest.TestCase):
 
     def test_eol_definition(self):
         """Verify standard definitions terminate at the newline."""
-        result = lex(":key:value\nNext line")
+        result = lex(':key:value\nNext line')
         expected = wrap_tokens([
-            (":key:value", TokenType.DEFINITION),
-            ("\nNext line", TokenType.LITERAL)
+            (':key:value\n', TokenType.DEFINITION),
+            ('Next line', TokenType.LITERAL)
         ])
         self.assertEqual(result, expected)
 
     def test_multi_line_block_definition(self):
         """Verify << >> wraps multiple lines and ignores EOL."""
-        text = ":key:<<\nLine 1\nLine 2\n>>\nTrailing"
+        text = ':key:<<\nLine 1\nLine 2\n>>\nTrailing'
         result = lex(text)
         expected = wrap_tokens([
-            (":key:<<\nLine 1\nLine 2\n>>", TokenType.DEFINITION),
-            ("\nTrailing", TokenType.LITERAL)
+            (':key:<<\nLine 1\nLine 2\n>>\n', TokenType.DEFINITION),
+            ('Trailing', TokenType.LITERAL)
+        ])
+        self.assertEqual(result, expected)
+
+    def test_definition_inside_multi_line_block(self):
+        """Verify << >> will consume contained definitions."""
+        text = ':outer:<<\nLine 1\n:inner:val>>\n:</final/<::value'
+        result = lex(text)
+        expected = wrap_tokens([
+            (':outer:<<\nLine 1\n:inner:val>>\n', TokenType.DEFINITION),
+            (':</final/<::value', TokenType.DEFINITION)
         ])
         self.assertEqual(result, expected)
 
     def test_nested_blocks_inside_definition(self):
         """Verify the pushdown automaton tracks nested << >>."""
-        text = ":outer:<<\n:inner:<<\nnested\n>>\n>>"
+        text = ':outer:<<\n:inner:<<\nnested\n>>\n>>'
         result = lex(text)
         self.assertEqual(result, wrap_tokens([(text, TokenType.DEFINITION)]))
 
     def test_definition_culling(self):
         """Verify definitions are neutralized if inside a higher boundary."""
         # EOL def inside an Invocation
-        result1 = lex("<foo :key:val>")
-        self.assertEqual(result1, wrap_tokens([("<foo :key:val>", TokenType.INVOCATION)]))
+        result1 = lex('<foo :key:val>')
+        self.assertEqual(result1, wrap_tokens([('<foo :key:val>', TokenType.INVOCATION)]))
         
         # Block def inside a Group
-        result2 = lex("{ :key:<<val>> }")
-        self.assertEqual(result2, wrap_tokens([("{ :key:<<val>> }", TokenType.GROUP)]))
+        result2 = lex('{ :key:<<val>> }')
+        self.assertEqual(result2, wrap_tokens([('{ :key:<<val>> }', TokenType.GROUP)]))
 
     def test_inline_colon_ignored(self):
         """Verify standard text colons do not trigger definitions."""
-        result = lex("Time: 12:00")
-        self.assertEqual(result, wrap_tokens([("Time: 12:00", TokenType.LITERAL)]))
+        result = lex('Time: 12:00')
+        self.assertEqual(result, wrap_tokens([('Time: 12:00', TokenType.LITERAL)]))
+
+    def test_failed_def_ignored(self):
+        """Verify starting colons with no middle do not trigger definitions."""
+        result = lex(':nonDef\nTime: 12:00\n:realDef>:value')
+        self.assertEqual(result, wrap_tokens([(':nonDef\nTime: 12:00\n', TokenType.LITERAL), (':realDef>:value', TokenType.DEFINITION)]))
+
+    def test_repeated_definition(self):
+        """Verify multiple colons don't trigger multiple definitions."""
+        result = lex(':key:<<val\n>>:not::notVal\n:final:first:other::last')
+        self.assertEqual(result, wrap_tokens([(':key:<<val\n>>', TokenType.DEFINITION), (':not::notVal\n', TokenType.LITERAL), (':final:first:other::last', TokenType.DEFINITION)]))
+
+    def test_unclosed_block(self):
+        """Verify unclosed blocks gracefully degrade."""
+        result = lex(':MyMacro:<<\nHere is a <valid_invocation>')
+        self.assertEqual(result, wrap_tokens([(':MyMacro:<<\n', TokenType.DEFINITION), ('Here is a ', TokenType.LITERAL), ('<valid_invocation>', TokenType.INVOCATION)]))
+
+    def test_unbalanced_block(self):
+        """Verify unbalanced blocks gracefully degrade."""
+        result = lex(':MyMacro:<<\n:inner:<<value\n>>\nHere is a <valid_invocation>')
+        self.assertEqual(result, wrap_tokens([(':MyMacro:<<\n', TokenType.DEFINITION), (':inner:<<value\n>>\n', TokenType.DEFINITION), ('Here is a ', TokenType.LITERAL), ('<valid_invocation>', TokenType.INVOCATION)]))
+
+    def test_non_def_marker(self):
+        """Verify non-definition-linked << don't count."""
+        result = lex('First <<\n:MyMacro:<<\ninner:<<fake\n>>\n<< >> invokes?')
+        self.assertEqual(result, wrap_tokens([('First <<\n', TokenType.LITERAL), (':MyMacro:<<\ninner:<<fake\n>>\n', TokenType.DEFINITION), ('<< >>', TokenType.INVOCATION), (' invokes?', TokenType.LITERAL)]))
 
 # class TestMacroEngine(unittest.TestCase):
     # def setUp(self):
