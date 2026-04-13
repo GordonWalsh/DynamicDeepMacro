@@ -7,7 +7,7 @@ class TokenType(Enum):
     LITERAL = auto()     # Plain text
     DEFINITION = auto()  # Bounded macro, pre-pattern, or post-pattern rules
     INVOCATION = auto()  # Context Stack lookup wrappers (< >)
-    GROUP = auto()       # Multi-value PRNG reduction wrappers ({ })
+    GROUP = auto()       # Atomic Raw text wrappers ({ })
     SPLIT = auto()       # Zero-depth option dividers (|)
     MODIFIER = auto()    # Math/Quantity rules (2$$)
 

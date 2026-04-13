@@ -30,7 +30,7 @@ This document specifies the data structures passed between stages and the invari
   - `'LITERAL'`: Basic plain text; no internal parsing required.
   - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
   - `'INVOCATION'`: A bounded token (`< >`) intended to be resolved against the Context Stack.
-  - `'GROUP'`: A bounded substring (`{ }`) intended to trigger PRNG reduction.
+  - `'GROUP'`: A bounded substring (`{ }`) intended to trigger PRNG Option Selection or isolate the contents.
   - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
   - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocations or Multi-Value groups.
 
@@ -71,13 +71,12 @@ This document specifies the data structures passed between stages and the invari
 **Base Interface (`ASTNode`):**
 - `raw_text` (str): Original text payload before evaluation.
 - `_evaluate_scope(context: MacroContext, local_defs: List[Definition], child_nodes: List['ASTNode']) -> str`: The shared execution loop (Push definitions → Iterate children → Pop definitions).
-  `_evaluate_scope(context: MacroContext, local_defs: List[Definition], child_nodes: List['ASTNode']) -> str`
 - `evaluate(context: MacroContext) -> str`: The polymorphic execution contract.
 
 **Subclasses:**
 - `LiteralNode`: Contains static text. Evaluation applies Pre/Post patterns and returns the string.
-- `GroupNode`: Contains a raw payload and an optional `modifier` (e.g., `2$$`). Evaluation triggers PRNG list reduction.
-- `InvocationNode`: Contains a `key` and an optional `modifier`. Evaluation triggers Context Stack lookup, followed by PRNG list reduction on the retrieved string.
+- `GroupNode`: Contains a raw payload and an optional `modifier` (e.g., `2$$`).
+- `InvocationNode`: Contains a `key` and an optional `modifier`. Evaluation triggers Context Stack lookup, followed by Raw text Evaluation on the retrieved string.
 
 **Invariants:**
 - The Parser strictly returns `ASTNode` objects, never raw `Token` objects, in its output list.
@@ -121,7 +120,7 @@ This document specifies the data structures passed between stages and the invari
 
 #### Evaluator Promises (ASTNode + Context → String)
 
-1. **The Gatekeeper (List Reduction):** Intercepts raw payload strings, Lexes them, and applies `SPLIT`/`MODIFIER` reduction *before* passing the winning sub-list to the Parser. Unselected PRNG branches are instantly destroyed.
+1. **The Gatekeeper (Option Selection):** Intercepts raw payload strings, Lexes them, and applies `SPLIT`/`MODIFIER` selection logic *before* passing the winning sub-list to the Parser. Unselected PRNG branches are instantly destroyed.
 2. **Polymorphic Execution:** Execution logic is entirely encapsulated within the `.evaluate()` methods of the AST subclasses, eliminating procedural type-checking.
 3. **Ephemeral Instantiation:** Child AST branches generated during macro expansion or Group selection are instantiated dynamically, evaluated, and immediately garbage-collected.
 ---

@@ -47,7 +47,7 @@ The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` o
 - `LITERAL`: Plain text.
 - `DEFINITION`: Bounded macro, pre-pattern, or post-pattern rules.
 - `INVOCATION`: Context Stack lookup wrappers (`< >`).
-- `GROUP`: Multi-value PRNG reduction wrappers (`{ }`).
+- `GROUP`: Atomic Raw text wrappers (`{ }`).
 - `SPLIT`: Zero-depth option dividers (`|`).
 - `MODIFIER`: Math/Quantity rules (`2$$`).
 
