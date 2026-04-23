@@ -5,11 +5,13 @@ This document specifies the evaluation subsystem: recursive traversal and evalua
 ## Overview
 
 The Evaluator performs the third stage of processing:
+
 ```text
 Abstract Syntax Tree (AST) → [RECURSIVE EVALUATION] → Final String Output
 ```
 
 The Evaluator's responsibilities are to:
+
 1. Traverse the AST recursively (depth-first)
 2. Manage definition scope (push/pop context stack)
 3. Apply pattern substitutions (unbounded and bounded)
@@ -30,6 +32,7 @@ Each ASTNode evaluation follows a strict seven-phase lifecycle to ensure consist
 **Action:** Parse and push local argument definitions to the context stack.
 
 **Details:**
+
 - Extract local arguments from node metadata (if present)
 - For parameterized invocations: `<key|:arg:val>`
 - Push both strong (`:`) and weak (`::`) definitions
@@ -46,6 +49,7 @@ Each ASTNode evaluation follows a strict seven-phase lifecycle to ensure consist
 **Action:** Apply PRE pattern substitutions to the raw text.
 
 **Details:**
+
 - Retrieve all DEFINITION nodes with `pattern_class='PRE'` from context stack
 - Evaluate definitions left-to-right (strong first, then weak)
 - Apply each definition to the entire text:
@@ -58,6 +62,7 @@ Each ASTNode evaluation follows a strict seven-phase lifecycle to ensure consist
 **Ordering:** Pre-patterns are applied before any invocation parsing, allowing text transformations that affect boundary detection.
 
 **Example:**
+
 ```text
 Input: "dark sky with dark clouds"
 Context: :<dark:bright
@@ -72,17 +77,19 @@ Result: "bright sky with bright clouds"
 **Action:** Identify and parse `< >` boundaries into child invocation nodes.
 
 **Details:**
+
 - Handled by lexer and parser functions
 - Scan transformed text for `< >` boundaries
 - For each boundary pair:
   - Extract content (may contain nested boundaries)
-  - Create INVOCATION node with content as raw_text
+  - Create InvocationObject with content as raw_text
   - Add to node's content_parts as child node
 - Preserve literal text between boundaries
 
 **Output:** content_parts now contains mixed literal strings and INVOCATION nodes
 
 **Example:**
+
 ```text
 Input (after Phase 2): "Generate a <adjective> <noun>"
 Phase 3 Output: [
@@ -100,6 +107,7 @@ Phase 3 Output: [
 **Action:** Evaluate all child INVOCATION nodes and concatenate results with literal text.
 
 **Details:**
+
 - Iterate through content_parts left-to-right:
   - For literal strings: append directly to output
   - For INVOCATION nodes:
@@ -108,10 +116,12 @@ Phase 3 Output: [
 - Final result: complete text with all invocations resolved
 
 **Scope Isolation:** Each child node gets its own context push/pop (Phase 1 and 7)
+
 - Non-transparent child nodes do not leak definitions to siblings
 - Transparent nodes (ROOT) do not create scope boundaries
 
 **Example:**
+
 ```text
 Input: [
     "Generate a ",
@@ -132,6 +142,7 @@ Phase 4 Output:
 **Action:** Apply POST pattern substitutions to the concatenated text.
 
 **Details:**
+
 - Retrieve all DEFINITION nodes with `pattern_class='POST'` from context stack
 - Evaluate definitions left-to-right (strong first, then weak)
 - Apply each definition to the entire text (same as Phase 2)
@@ -140,6 +151,7 @@ Phase 4 Output:
 **Ordering:** Post-patterns are applied after all invocation resolution, allowing final text cleanup.
 
 **Example:**
+
 ```text
 Input: "Generate a dark wizard"
 Context: :>wizard:mage
@@ -153,6 +165,7 @@ Result: "Generate a dark mage"
 **Action:** Remove locally-pushed definitions from context stack.
 
 **Details:**
+
 - Pop strong_count strong definitions (from Phase 1)
 - Pop weak_count weak definitions (from Phase 1)
 - Only for non-transparent nodes
@@ -168,6 +181,7 @@ Result: "Generate a dark mage"
 **Action:** Record evaluation results and state for secondary outputs.
 
 **Details:**
+
 - Log node identifier and final resolved value
 - Log context state (definition counts, stack depth)
 - Record execution metadata (timing, recursion depth)
@@ -210,6 +224,7 @@ Unbounded patterns are applied sequentially to the full text using the following
    Literal value is used as-is; escapes handled by regex engine
 
    **Literal Key + Regex Value:**
+
    ```python
    # Find all occurrences of literal key, replace with regex-evaluated value
    # Outsources handling of escape sequences and such to the regex engine
@@ -218,14 +233,17 @@ Unbounded patterns are applied sequentially to the full text using the following
    ```
 
    **Literal Key + Literal Value:**
+
    ```python
    result = text.replace(definition.key, definition.value)
    ```
+
    Simple string replacement; all occurrences replaced
 
 3. **Update text:** `text = result` for next iteration
 
 **Key Principles:**
+
 - Definitions are evaluated in **priority order** (strong before weak)
 - Each definition's output becomes the input for the next
 - Early definitions affect later definitions
@@ -234,6 +252,7 @@ Unbounded patterns are applied sequentially to the full text using the following
 ### Example: Composed Substitutions
 
 TODO Why not replace the `/  /  /` strings with definition syntax?
+
 ```text
 Input: "The quick brown fox"
 
@@ -246,11 +265,12 @@ Evaluation:
   Step 1: "The quick brown fox" → (apply D1) → "The slow brown fox"
   Step 2: "The slow brown fox" → (apply D2) → "The slow gray fox"
   Step 3: "The slow gray fox" → (apply D3) → "The slow gray fox" (already replaced quick, so this step doesn't change the string)
-  
+
 Result: "The slow gray fox"
 ```
 
 ---
+
 TODO Add description of other elements of context
 
 ## Context Stack Management
@@ -260,6 +280,7 @@ TODO Add description of other elements of context
 The MacroContext is a double-ended deque that maintains definition priority during evaluation.
 
 **Structure:**
+
 ```text
 HEAD (strong, highest priority)
 ├─ Strong definitions (pushed in Phase 1)
@@ -273,6 +294,7 @@ TAIL (weak, lower priority)
 ```
 
 **Evaluation Order:**
+
 - Strong definitions at HEAD are checked first
 - Weak definitions at TAIL are checked as fallback
 - Within each strength category, **first pushed = last popped** (LIFO for strong, FIFO for weak)
@@ -280,16 +302,19 @@ TAIL (weak, lower priority)
 ### Scoping Rules
 
 **Transparent Nodes:**
+
 - Do not create scope boundaries
 - Definitions pushed by children leak to siblings
 - Allows global context to be shared
 
 **Opaque Nodes:**
+
 - Do create scope boundaries
 - Definitions pushed in Phase 1 are popped in Phase 6
 - Siblings do not see child definitions
 
 **Example of Scope Isolation:**
+
 ```text
 Input: "<noun_1> <noun_2>"
 Context: {noun_1: "cat", noun_2: "dog"}
@@ -304,7 +329,7 @@ ROOT node (transparent):
     Phase 5: Apply POST patterns
     Phase 6: No pops
     Result: "cat"
-  
+
   Phase 4b: Evaluate INVOCATION("<noun_2>"):
     Phase 1: No local args
     Phase 3: Empty
@@ -312,9 +337,9 @@ ROOT node (transparent):
     Phase 5: Apply POST patterns
     Phase 6: No pops
     Result: "dog"
-  
+
   Phase 4c: Concatenate: "cat dog"
-  
+
 Result: "cat dog"
 ```
 
@@ -322,7 +347,7 @@ Result: "cat dog"
 
 ## Invocation Resolution
 
-When an INVOCATION node's raw_text is evaluated:
+When an InvocationObject's raw_text is evaluated:
 
 1. **Lookup:** Search context stack for a definition matching the raw_text
    TODO the strong-weak distinction naturally happens by how they are added, just search left-to-right
@@ -334,18 +359,19 @@ When an INVOCATION node's raw_text is evaluated:
    - Retrieve all DEFINITION nodes with `pattern_class='BOUNDED'`
    - Apply to raw_text (same as Phases 2/5)
 
-3. **Return:** The resolved value becomes the INVOCATION node's output
+3. **Return:** The resolved value becomes the InvocationObject's output
 
 **Example:**
+
 ```text
 Raw text: "adjective"
-Context: 
+Context:
   :adjective:dark        (strong definition)
   ::adjective:red        (weak definition, fallback)
 
 Lookup process:
   Check strong definitions (left-to-right) → Found: "dark"
-  
+
 Result: "dark" (weak definition not checked)
 ```
 
@@ -375,17 +401,18 @@ The Evaluator ensures deterministic, repeatable execution:
 
 ### Implemented in `macro_engine.py` TODO not any more
 
-TODO evaluate will be a standalone function, with ASTNode.evaluate() just being a helper.
-- **ASTNode.evaluate():** Core 7-phase lifecycle
+TODO evaluate will be a standalone function, with ASTNode.execute() just being a helper.
+
+- **ASTNode.execute():** Core 7-phase lifecycle
   - Phase 1: Placeholder (no local args yet)
-  - Phase 2: _apply_unbounded(text, 'PRE') fully implemented
-  - Phase 3: _lex_string() with `< >` boundary parsing
+  - Phase 2: \_apply_unbounded(text, 'PRE') fully implemented
+  - Phase 3: \_lex_string() with `< >` boundary parsing
   - Phase 4: Recursive child evaluation and concatenation
-  - Phase 5: _apply_unbounded(text, 'POST') fully implemented
+  - Phase 5: \_apply_unbounded(text, 'POST') fully implemented
   - Phase 6: Placeholder (no scope pop yet)
   - Phase 7: Partial (trace logging not yet implemented)
 
-- **ASTNode._apply_unbounded():** Pattern substitution engine
+- **ASTNode.\_apply_unbounded():** Pattern substitution engine
   - Regex key with regex value: `re.sub(key, value, text)`
   - Literal key with literal value: `text.replace(key, value)`
   - Proper escaping for regex patterns

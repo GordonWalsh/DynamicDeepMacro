@@ -73,14 +73,14 @@ from lexer import lex
 #     def _evaluate_scope(self, context: MacroContext, local_defs: list, child_nodes: list) -> str:
 #         """Handles context pushing, child iteration, and context popping for any node."""
 #         context.push(local_defs)
-#         result = "".join(child.evaluate(context) for child in child_nodes)
+#         result = "".join(child.execute(context) for child in child_nodes)
 #         context.pop(local_defs)
 #         return result
 
 #     def evaluate(self, context) -> str:
 #         raise NotImplementedError
 
-# class InvocationNode(ASTNode):
+# class InvocationObject(ASTNode):
 #     def evaluate(self, context):
 #         # 1. Get the raw string
 #         raw_string = context.get_accumulated_value(self.key)
@@ -92,7 +92,7 @@ from lexer import lex
 #         # 3. Use the inherited base logic to execute the children directly
 #         return self._evaluate_scope(context, local_defs, child_nodes)
     
-# class GroupNode(ASTNode):
+# class ScopeNode(ASTNode):
 #     def evaluate(self, context):
 #         # 1. Reduce the inline string using PRNG
 #         winning_tokens = self.reduce_and_select(self.raw_payload)
@@ -239,5 +239,5 @@ class PromptEngine:
         
         # The engine just runs the same scope execution on the global document
         context.push(local_defs)
-        result = "".join(child.evaluate(context) for child in child_nodes)
+        result = "".join(child.execute(context) for child in child_nodes)
         return result

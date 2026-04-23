@@ -4,19 +4,20 @@ This document establishes the strict domain language for the Macro Engine. These
 
 ## 1. The Syntax Tree & Hierarchy
 
-- **1.1. AST Node:** An ephemeral, polymorphic object (`LiteralNode`, `GroupNode`, `InvocationNode`) that encapsulates the JIT logic to parse and evaluate a specific syntax pattern.
-- **1.2. Parent / Child:** Relative structural terms. A Parent Node iterates over its Child Nodes during evaluation.
+- **1.1. AST Node:** An ephemeral, polymorphic object (`TextNode`, `ScopeNode`) that encapsulates Execution and string generation logic. Note: Invocations are transient directives, not lingering AST Nodes.
+- **1.2. Parent / Child:** Relative structural terms. A Parent Node iterates over its Child Invocations during Expansion and Child Nodes during Execution.
 - **1.3. Top-Level:** Refers to syntax or text occurring at depth `0` relative to the current node's Payload, unhidden by any internal boundaries.
-- **1.4. Scope:** The isolated temporal and spatial domain of an AST Node's execution lifecycle.
+- **1.4. Scope:** The isolated temporal and spatial domain of an AST Node's Execution. Acts as a barrier to Child Nodes inadvertantly affecting the Parent, e.g. by leaking Definitions.
 - **1.5. Token:** The atomic data unit produced by the Lexer. It contains a substring (retaining syntax), its bounding indices, and its structural type (e.g., `TokenType.INVOCATION`), but applies no semantic logic.
+- **1.6 Invocation Object:** A transient resolution primitive that Resolves its Segments and returns Definitions and a List of AST Nodes to its Parent Node. It is completely consumed during the Expansion Phase.
 
 ## 2. State & Determinism
 
-- **2.1. Context Stack (The Context):** The dynamic `MacroContext` data structure passed down the tree. It holds the cumulative memory of active Definitions, the current PRNG Seed, and the Trace object.
-- **2.2. Local Context:** Definitions owned directly by the current Scope.
+- **2.1. Context Stack (The Context):** The dynamic `MacroContext` data structure passed down the tree. It holds the cumulative memory of active Definitions, the current PRNG Seed information, and the Trace object.
+- **2.2. Local Context:** Definitions owned directly by the current Scope, including those from Unscoped Invocations.
 - **2.3. Global Context:** Definitions inherited from the Context Stack prior to the current Scope's creation.
-- **2.4. PRNG Seed:** A deterministic, path-dependent string used to calculate random rolls. Nodes modify inherited seeds predictably (e.g., appending an index like `_0` or `_2_Key`) before passing them to children, ensuring branch isolation.
-- **2.5. Trace:** A tracking object within the Context that records how Options are selected at specific PRNG nodes for a given Seed. It allows users to query the decision-path of an evaluation after the string is fully generated.
+- **2.4. PRNG Seed:** A deterministic, path-dependent string used to calculate random rolls. Inherited seeds are modified predictably (e.g., appending an index like `_0` or `_2_Key`) before being used by Children, ensuring branch isolation.
+- **2.5. Trace:** A tracking object within the Context that records how Options are Selected. It allows users to query the decision-path of an Evaluation after the string is fully generated, without repeating the recursive walk. Details TBD.
 
 ## 3. Text States
 
@@ -26,18 +27,18 @@ This document establishes the strict domain language for the Macro Engine. These
 ## 4. Definitions, Keys & Dictionary
 
 - **4.1. Definition:** The fundamental rule mapping a Key-Pattern to a Value-Pattern. It consists of structural properties (Strength, Position, Class) and its mapping logic. The term can refer to both the parsed data object and the raw string format.
-- **4.2. Scope Hoisting:** The extraction of Definitions from a Payload so they can be injected into the active Scope. Most notably, this is the mechanism Unscoped Invocations use to elevate contained Definitions into acting as siblings of the Invocation itself.
+- **4.2. Scope Hoisting:** The extraction of Definitions and Nodes from an Invocation so they can be provided to the active Scope.
 - **4.3. Key-Pattern:** The left-hand side of a Definition. It can be a literal string or a regex search pattern.
 - **4.4. Value-Pattern:** The right-hand side of a Definition. It is stored as Raw Text until it is successfully injected and evaluated.
-- **4.5. Raw Key:** The unprocessed Raw Text of a Segment intended for dictionary lookup before it is evaluated.
-- **4.6. Evaluated Key:** The Literal Text produced after evaluating a Raw Key. This is the exact string passed to the Context Stack to find a matching Key-Pattern.
+- **4.5. Raw Key:** The unprocessed Raw Text of a Segment intended for dictionary lookup, before it is evaluated.
+- **4.6. Evaluated Key:** The Literal Text produced after evaluating a Raw Key. This is the exact string passed to the Context Stack to find matching Key-Patterns.
 
 ## 5. Payloads, Groups, & Invocations
 
-- **5.1. Payload:** The exact Raw Text residing inside an Invocation or Group's boundaries before it is tokenized or split.
-- **5.2. Group:** A syntax structure (`{...}`) that evaluates its Payload in an isolated Child Scope, guaranteeing any internal Definitions do not escape into the Parent.
-- **5.3. Scoped Invocation:** A syntax structure (`<...>`) without a leading split. It evaluates its Segments within an isolated Child Scope. The resulting Literal Text is provided to the Parent, while any internal Definitions are discarded and do not escape.
-- **5.4. Unscoped Invocation:** A syntax structure (`<|...>`) signaled by a leading `SPLIT` token. It is evaluated without an isolated Child Scope; the Parent directly absorbs its hoisted Definitions and resulting Literal Text into the current scope.
+- **5.1. Payload:** The exact Raw Text residing inside an Invocation or Group's boundaries before it is processed.
+- **5.2. Group:** A syntax structure (`{...}`) that evaluates its Payload in an isolated Child `ScopeNode`, guaranteeing any internal Definitions do not escape into the Parent.
+- **5.3. Scoped Invocation:** A syntax structure (`<...>`) without a leading `SPLIT` Token. It evaluates its Segments within an isolated Child `ScopeNode`. The resulting Literal Text is provided to the Parent during Execution, while any internal Definitions are discarded and do not escape.
+- **5.4. Unscoped Invocation:** A syntax structure (`<|...>`) signaled by a leading `SPLIT` token. It is Expanded without an isolated Child Scope; the Parent directly absorbs its hoisted Definitions and resulting Literal Text into the current Scope.
 - **5.5. Segments:** The Raw Text divisions created by Top-Level `SPLIT` (`|`) Tokens within any Payload (both Invocations and Groups). They are 0-indexed and uniformly equivalent in evaluation rules.
 - **5.6. Selection Modifier:** The parsed logic derived from the `$$` syntax, containing the `Quantity`, `Indices`, and/or `Separator`.
 - **5.7. Options:** The pool of Segments that are subjected to a Selection Modifier (or default PRNG behavior).
@@ -46,8 +47,9 @@ This document establishes the strict domain language for the Macro Engine. These
 ## 6. Engine Processes
 
 - **6.1. Lexing:** The single-pass process of converting Raw Text into a flat list of zero-depth Tokens.
-- **6.2. Parsing:** The direct mapping of a Lexer Token to its corresponding AST Node constructor. It applies no recursive string logic itself.
+- **6.2. Parsing:** The direct mapping of a Lexer Token to a corresponding code Object or AST Node. It applies no recursive string logic itself.
 - **6.3. Option Selection:** The process of applying a Selection Modifier to a pool of Options to yield the Selection.
-- **6.4. Resolution (Dictionary Lookup):** The act of querying the Context Stack with an Evaluated Key to accumulate matching Value-Patterns.
-- **6.5. Node Execution:** The JIT process where an AST Node prepares its Scope, executes its specific logic, processes its Children, and returns its final string.
-- **6.6. String Evaluation:** The overarching recursive pipeline of passing a Raw Text string through Lexing, Parsing, and Node Execution to produce a final Literal Text string.
+- **6.4. Resolution (Dictionary Lookup):** The act of querying the Context Stack with an Evaluated Key to accumulate matching Value-Patterns, resulting in a concatenated Raw Text.
+- **6.5. Expansion:** The recursive phase where Invocations are processed, adding their returned Definitions and AST Nodes to the Parent. Definitions are hoisted to a staging pool during this process to prevent cross-contamination between Sibling Invocations.
+- **6.6. Node Execution:** The recursive JIT string generation phase where a Parent iterates over a finalized list of Child AST Nodes. The Parent applies Local Pre-Patterns to the Child Payloads, then provides a complete Context Object with all necessary information for each Child to perform all applicable steps to complete its Evaluation process. The Parent concatenates the resulting Literal strings from Children and applies Local Post-Patterns.
+- **6.7. String Evaluation:** The holistic, overarching process of turning Raw Text into Literal Text. It encompasses Pre-Processing, Expansion, and Execution, as well as any other intermediate steps.

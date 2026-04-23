@@ -46,7 +46,7 @@ class TestLexer(unittest.TestCase):
     def test_multiple_boundary_types(self):
         """Verify handling of multiple boundary types."""
         result = lex(r'hello <world> and {test} end')
-        expected = wrap_tokens([(r'hello ', TokenType.LITERAL), (r'<world>', TokenType.INVOCATION), (r' and ', TokenType.LITERAL), (r'{test}', TokenType.GROUP), (r' end', TokenType.LITERAL)])
+        expected = wrap_tokens([(r'hello ', TokenType.LITERAL), (r'<world>', TokenType.INVOCATION), (r' and ', TokenType.LITERAL), (r'{test}', TokenType.SCOPE), (r' end', TokenType.LITERAL)])
         self.assertEqual(result, expected)
 
     def test_boundary_at_string_start(self):
@@ -126,7 +126,7 @@ class TestLexer(unittest.TestCase):
     def test_default_boundaries(self):
         """Verify that default boundaries are { } and < > with { } priority."""
         result = lex(r'a <b> c {d} e')
-        expected = wrap_tokens([(r'a ', TokenType.LITERAL), (r'<b>', TokenType.INVOCATION), (r' c ', TokenType.LITERAL), (r'{d}', TokenType.GROUP), (r' e', TokenType.LITERAL)])
+        expected = wrap_tokens([(r'a ', TokenType.LITERAL), (r'<b>', TokenType.INVOCATION), (r' c ', TokenType.LITERAL), (r'{d}', TokenType.SCOPE), (r' e', TokenType.LITERAL)])
         self.assertEqual(result, expected)
 
     def test_multiple_unclosed_at_end(self):
@@ -143,7 +143,7 @@ class TestLexer(unittest.TestCase):
         Expected: literal text <a , brace token {b> }
         """
         result = lex(r'<a {b> }')
-        expected = wrap_tokens([(r'<a ', TokenType.LITERAL), (r'{b> }', TokenType.GROUP)])
+        expected = wrap_tokens([(r'<a ', TokenType.LITERAL), (r'{b> }', TokenType.SCOPE)])
         self.assertEqual(result, expected)
 
     def test_interleaved_brace_before_angle(self):
@@ -157,7 +157,7 @@ class TestLexer(unittest.TestCase):
         Brace is higher priority in this case.
         """
         result = lex(r'{<b> }')
-        expected = wrap_tokens([(r'{<b> }', TokenType.GROUP)])
+        expected = wrap_tokens([(r'{<b> }', TokenType.SCOPE)])
         self.assertEqual(result, expected)
 
 class TestDiscreteTokens(unittest.TestCase):
@@ -183,11 +183,11 @@ class TestDiscreteTokens(unittest.TestCase):
 
         # Split inside Group
         result2 = lex(r'{a | b}')
-        self.assertEqual(result2, wrap_tokens([(r'{a | b}', TokenType.GROUP)]))
+        self.assertEqual(result2, wrap_tokens([(r'{a | b}', TokenType.SCOPE)]))
         
         # Modifier inside Group
         result3 = lex(r'{2$$foo}')
-        self.assertEqual(result3, wrap_tokens([(r'{2$$foo}', TokenType.GROUP)]))
+        self.assertEqual(result3, wrap_tokens([(r'{2$$foo}', TokenType.SCOPE)]))
 
     def test_zero_depth_modifier(self):
         """Verify $$ is detected correctly at the top level."""
@@ -250,7 +250,7 @@ class TestDefinitionTokens(unittest.TestCase):
         
         # Block def inside a Group
         result2 = lex('{ :key:<<val>> }')
-        self.assertEqual(result2, wrap_tokens([('{ :key:<<val>> }', TokenType.GROUP)]))
+        self.assertEqual(result2, wrap_tokens([('{ :key:<<val>> }', TokenType.SCOPE)]))
 
     def test_inline_colon_ignored(self):
         """Verify standard text colons do not trigger definitions."""

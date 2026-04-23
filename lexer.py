@@ -21,7 +21,7 @@ from core_types import Token, TokenType
 
 # MVP structural constants (to be replaced by dynamic SyntaxConfig later)
 SYNTAX_CHARACTERS = r'\\:/<>{}\|'
-priority = dict({TokenType.DEFINITION: 4, TokenType.GROUP: 3, TokenType.INVOCATION: 2, TokenType.LITERAL: -1})
+priority = dict({TokenType.DEFINITION: 4, TokenType.SCOPE: 3, TokenType.INVOCATION: 2, TokenType.LITERAL: -1})
 
 def lex(text: str) -> List[Token]:
     """
@@ -73,7 +73,7 @@ def lex(text: str) -> List[Token]:
         elif char == '}':
             if groups:
                 start = groups.pop()
-                candidates.append((start, i, TokenType.GROUP))
+                candidates.append((start, i, TokenType.SCOPE))
         elif char == '\n': # Reset on newlines, not robust around definitions
             invocations = []
             groups = []
@@ -361,7 +361,7 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
         token = Token(
             position=start_idx,
             length=end_idx - start_idx,
-            token_type=TokenType.INVOCATION if boundaries[type_id] == ('<', '>') else TokenType.GROUP,
+            token_type=TokenType.INVOCATION if boundaries[type_id] == ('<', '>') else TokenType.SCOPE,
             value=token_text
         )
         result.append(token)

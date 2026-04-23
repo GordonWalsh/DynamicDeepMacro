@@ -50,6 +50,8 @@ To ensure the next session inherits a clean, authoritative state, we need to org
 3.  **PRNG Seed Pathing:** Define the exact string manipulation logic for ensuring deterministic seed inheritance (e.g., `ParentSeed -> ParentSeed_0`, `ParentSeed_1`).
 4.  **Regex Integration:** Confirming the intersection of Positional Digits (`<0>`, `<1>`) with Regex Capture Groups during the Resolution phase.
 5.  **Pre/Post Patterns:** Where exactly in the pipeline do `:<` and `:>` mutations occur relative to Lexing and the Two-Pass Scope?
+6.  **Shadow Stack:** Are we still implementing a shadow stack to eliminate recursive applications of the same Definition? Eg with a Definition like `:/A(\w+)/:/<AA\1>/` and Invocation `<A>`? Or is there another recursion solution
+7.  **Node Limit/Timeout:** How are we preventing infinite and extremely long (eg recursion bomb) evaluation loops. Are we keeping track of total Tokens, Nodes, Trace Log size, or something else?
 
 # Special Prompts and Breadcrumbs
 
@@ -68,7 +70,7 @@ The Axiom Auditor (Early Session Validation):
 `Act as a strict compliance checker. Review the provided documentation ([filename]) against our established Core Features and Glossary. Identify any instances where the text regresses to rejected concepts (e.g., Pipeline Parsing instead of JIT AST Parsing, Segment 0 Exceptionalism, or conflating Evaluation with Resolution). Output only the direct quotes of the violations and the reason they fail.`
 
 ```text
-"We are continuing the development of a Python text-generation Macro Engine. Attached are the current project files. Please begin by reading `HANDOVER_STATE_2026-04-12.md`, `CORE_FEATURES_AND_BEHAVIORS.md`, and `GLOSSARY.md`.
+We are continuing the development of a Python text-generation Macro Engine. Attached are the current project files. Please begin by reading `HANDOVER_STATE_2026-04-12.md`, `CORE_FEATURES_AND_BEHAVIORS.md`, and `GLOSSARY.md`.
 
 To confirm you have internalized the state of the project, please output a `<thought>` block doing three things:
 

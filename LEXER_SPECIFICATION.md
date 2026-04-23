@@ -14,7 +14,7 @@ The Lexer operates strictly under the **Breadth-Eager, Depth-Lazy** paradigm. It
 
 To bypass the catastrophic performance penalties of Python string buffering, the Lexer utilizes an **Interval-Tracking Speculative Architecture**, ensuring O(N) linear time complexity.
 
-* * *
+---
 
 ## 2\. Core Lexing Architecture
 
@@ -34,7 +34,7 @@ To inherently protect nested syntax and isolate user typos (unbalanced brackets)
 - **The Rule:** If a registered token boundary (e.g., `{ }` or `|`) falls strictly within the index bounds of a higher-order boundary (e.g., `< >`), the inner marker is neutralized.
 - **The Result:** The Lexer only emits zero-depth tokens. The internal contents of macros and groups remain untouched, flat literal strings.
 
-* * *
+---
 
 ## 3\. Token Configuration & State
 
@@ -47,11 +47,11 @@ The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` o
 - `LITERAL`: Plain text.
 - `DEFINITION`: Bounded macro, pre-pattern, or post-pattern rules.
 - `INVOCATION`: Context Stack lookup wrappers (`< >`).
-- `GROUP`: Atomic Raw text wrappers (`{ }`).
+- `SCOPE`: Atomic Raw text wrappers (`{ }`).
 - `SPLIT`: Zero-depth option dividers (`|`).
 - `MODIFIER`: Math/Quantity rules (`2$$`).
 
-* * *
+---
 
 ## 4\. Escape Sequences & Formatting
 
@@ -63,7 +63,7 @@ To avoid the "Slash Collision Trap" (destroying file paths or standard regex inp
 - If escaped, the Lexer ignores the marker for boundary tracking.
 - **Standard escapes (e.g., `\n`, `\t`, `\C:\`) are treated as pure literal text** and are not processed or stripped by the Lexer.
 
-* * *
+---
 
 ## 5\. Definition Boundary Rules
 
@@ -81,7 +81,7 @@ To support "Container Macros" and multi-line values, the Lexer supports explicit
 - **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary. It increments a counter for nested `<<` markers and only closes the block when the outermost `>>` is reached.
 - **Strict Literal Capture:** The Lexer does _not_ chomp newlines. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
 
-* * *
+---
 
 ## 6\. Lexer-Parser Contract
 
