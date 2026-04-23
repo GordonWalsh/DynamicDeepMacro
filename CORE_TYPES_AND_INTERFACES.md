@@ -4,15 +4,17 @@ This document defines the shared data structures and contracts between the three
 
 ## Overview
 
-The macro engine processes text through a strictly lazy, recursive lifecycle:
+The macro engine processes text through a lazy, recursive lifecycle, roughly:
 
 ```text
 String Input
-↓ [LEXER]
-Token List
-↓ [PARSER]
+↓ [Lexing and Segmenting]
+List of Token Lists
+↓ [Invocation and/or Selection]
+Single Flat List of Tokens
+↓ [Parsing and Expansion]
 Abstract Syntax Tree (AST) with Local Definitions
-↓ [EVALUATOR + Calling Context]
+↓ [Execution]
 Final String Output
 ```
 
@@ -28,24 +30,25 @@ This document specifies the data structures passed between stages and the invari
 - `position` (int): Character offset of the start marker in the input string.
 - `length` (int): Number of characters consumed.
 - `token_type` (`TokenType` Enum) is one of:
-  - `'LITERAL'`: Basic plain text; no internal parsing required.
+  - `'TEXT'`: Basic plain text; no internal parsing required. Local Pre-Patterns still apply.
   - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
-  - `'INVOCATION'`: A bounded token (`< >`) intended to be resolved against the Context Stack.
+  - `'INVOCATION'`: A bounded token (`< >`) intended to be resolved against the Context Stack. Includes both Scoped (`<...>`) and Unscoped (`<|...>`).
+  - `'POSITIONAL'`: A bounded digit token (e.g., `<0>`, `<1>`) referencing an Evaluated Parent Invocation Segment. Similar UX behavior to other Invocations, but processed differently internally. TODO I don't think this is a Token type pre-Parsing?
   - `'SCOPE'`: A bounded substring (`{ }`) intended to trigger PRNG Option Selection or isolate the contents.
   - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
-  - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocations or Multi-Value groups.
+  - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocation Segments or `|`-divided Raw Text Scope Node Payloads.
 
 **Invariants:**
 
 - `SPLIT` and `MODIFIER` tokens are only identified at the current lexical depth (zero-depth relative to the parent string). Nested markers remain inert text.
 - Escape characters preceding genericized syntax markers are passed through to the Parser.
-- The Lexer identifies token types dynamically based on an injected global `SyntaxConfig` object. It does not store boundary strings separately in the token memory footprint.
+- TODO Later: The Lexer identifies token types dynamically based on a global `SyntaxConfig` object.
 
 ### Definition Class (Parser Output)
 
 **Purpose:** Parsed directive from a Definition token, ready for Context Stack insertion.
 
-**Syntax Matrix:**
+**Syntax Matrix and Default Characters:**
 
 - **Start Markers (Class):** `:` (Bounded Macro), `:<` (Pre-Pattern), `:>` (Post-Pattern).
 - **Middle Markers (Direction/Strength):** `[Empty String]` (Base), `<` (Left-Concat), `>` (Right-Concat); then `:` (Strong) or `::` (Weak).
@@ -69,27 +72,28 @@ This document specifies the data structures passed between stages and the invari
 
 ### ASTNode Class Hierarchy (Parser Output)
 
-**Purpose:** Represents a semantic, executable unit for evaluation. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class.
+**Purpose:** Represents a semantic unit for further processing. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class.
 
-**Note on Parser Return Type:** The Parser does _not_ return a single root node. To avoid creating dummy wrappers, it returns a flat `Tuple[List[Definition], List[ASTNode]]`.
+**Note on Parser Return Type:** The Parser does *not* return a single root node. To avoid creating dummy wrappers, it returns a flat `Tuple[List[Definition], List[ASTNode]]`.
 
 **Base Interface (`ASTNode`):**
 
 - `raw_text` (str): Original text payload before evaluation.
-- `_evaluate_scope(context: MacroContext, local_defs: List[Definition], child_nodes: List['ASTNode']) -> str`: The shared execution loop (Push definitions → Iterate children → Pop definitions).
-- `evaluate(context: MacroContext) -> str`: The polymorphic execution contract.
+- TODO: other shared fields and functions
 
 **Subclasses:**
 
-- `TextNode`: Contains static text. Evaluation applies Pre/Post patterns and returns the string.
-- `ScopeNode`: Contains a raw payload and an optional `modifier` (e.g., `2$$`).
-- `InvocationObject`: Contains a `key` and an optional `modifier`. Evaluation triggers Context Stack lookup, followed by Raw text Evaluation on the retrieved string.
+- `TextNode`: Contains Raw text.
+- `ScopeNode`: Contains a Raw Payload that may be `|`-Split with a single optional `Modifier` (e.g., `2$$`). Controls Scope Boundaries.
+- `UnscopedInvocationNode`: Contains `|`-Split Segments, each an optional `Modifier`. Key-String Segments are Evaluated preceding Context Stack lookup, with the Parsed Definitions and Nodes returned to the Parent.
+- `ScopedInvocationNode`: Contains `|`-Split Segments, each an optional `Modifier`. Key-String Segments are Evaluated preceding Context Stack lookup, with the resulting Raw Texts subsequently Evaluated and returned as Literal Text.
+- `PositionalNode`: TODO explain PositionalNode
+- `EscapeNode`: Probably. TODO explain EscapeNode
 
 **Invariants:**
 
-- The Parser strictly returns `ASTNode` objects, never raw `Token` objects, in its output list.
-- Inner boundaries in the content strings of `InvocationObject` and `ScopeNode` are stored as raw strings; they are not parsed into child trees until `.evaluate()` is explicitly called.
-- The `_evaluate_scope` method guarantees stack safety by internally tracking `(head_pushes, tail_pushes)` and executing exact removal operations upon scope exit.
+- The Parser strictly returns `ASTNode` objects and Definitions, never raw `Token` objects, in its output list.
+- Inner boundaries in the content strings of `InvocationNode` and `ScopeNode` are stored as raw strings; they are not parsed into child trees until `.evaluate()` is explicitly called.
 
 ### MacroContext Class (Evaluator State)
 
@@ -98,10 +102,13 @@ This document specifies the data structures passed between stages and the invari
 **Architecture:**
 
 - Deque-based: Strong definitions pushed to HEAD, Weak definitions pushed to TAIL.
-- PRNG: Implements path-hashed seed tracking (`parent_seed + child_index`) for deterministic sibling generation.
+- PRNG: Implements path-hashed seed tracking (eg `parent_seed + child_index`) for deterministic sibling generation.
+- Trace object: TODO explain Trace
+- Positional string array: Stores Literal Texts from next-highest Invocation Segments for retrieval by Positional Invocations
 
 **Methods:**
 
+TODO confirm these
 - `push(definitions: List[Definition]) → None`: Inserts definitions into the deque.
 - `get_definitions(key: str) → Tuple[Optional[Definition], List[Definition]]`: Traverses the deque Left-to-Right. Accumulates `LEFT` and `RIGHT` modifiers into a list. Terminates search and returns `(Base_Definition, Modifiers_List)` upon hitting a `BASE`.
 - `get_unbounded_patterns(pattern_class: str) → List[Definition]`: Returns discrete `PRE` or `POST` patterns in priority order.
@@ -123,17 +130,19 @@ This document specifies the data structures passed between stages and the invari
 
 #### Parser Promises (Token List → ASTNode)
 
-1. **State/Data Decoupling:** Separates `DEFINITION` tokens from execution tokens.
+1. **State/Data Decoupling:** Separates `DEFINITION` tokens from Node tokens.
 2. **Object Instantiation:** Parses raw definition strings into strongly typed `Definition` objects.
-3. **Polymorphic Mapping (Breadth Eagerness):** Maps the remaining zero-depth execution tokens into their corresponding `ASTNode` subclasses (e.g., `TextNode`, `InvocationObject`) and returns them alongside the hoisted definitions as a `Tuple`.
+3. **Polymorphic Mapping (Breadth Eagerness):** Maps the remaining zero-depth execution tokens into their corresponding `ASTNode` subclasses (e.g., `TextNode`, `ScopeNode`, etc) and returns them alongside the hoisted definitions as a `Tuple`.
 4. **Depth Laziness:** Never lexes or parses the internal string contents of an `INVOCATION` or `SCOPE` token.
-5. **Selective Escape Stripping:** The Parser strictly strips escape characters (`\`) _only_ when they precede custom structural syntax markers. It preserves all standard text escapes (`\n`, `\t`, `\d`) as literal strings, leaving them fully intact for downstream regex compilation or Late-Binding escape decoding.
+5. **Selective Escape Stripping:** The Parser strictly strips escape characters (`\`) *only* when they precede custom structural syntax markers. It preserves all standard text escapes (`\n`, `\t`, `\d`) as literal strings, leaving them fully intact for downstream regex compilation or escape decoding.
+6. **AST Subclassing**: The Parser distinguishes Invocation intents immediately, outputting explicit `ScopedInvocationNode`, `UnscopedInvocationNode`, or `PositionalNode` objects.
 
 #### Evaluator Promises (ASTNode + Context → String)
 
+TODO this section needs to be replaced with better Expansion and Execution sections
 1. **Distinct Option Selection Timing:** Option Selection is handled dynamically based on the object type.
-  - **ScopeNodes (Raw Text):** Perform Option Selection immediately after `LexAndSegment` to cull unselected branches before Parsing.
-  - **InvocationObjects (Dictionary Queries):** Do _not_ cull Segments natively. They `LexAndSegment`, Resolve all Segments against the dictionary, and then apply Modifiers to the _Resolved Values_ individually to Select Options.
+    - **ScopeNodes (Raw Text):** Perform Option Selection immediately after `LexAndSegment` to cull unselected branches before Parsing.
+    - **InvocationNodes (Dictionary Queries):** Do *not* cull Segments natively. They `LexAndSegment`, Resolve all Segments against the dictionary, and then apply Modifiers to the *Resolved Values* individually to Select Options.
 2. **Polymorphic Execution:** Execution logic is entirely encapsulated within the `.execute()` methods of the AST subclasses, eliminating procedural type-checking.
 3. **Ephemeral Instantiation:** Child AST branches generated during macro expansion or Group selection are instantiated dynamically, evaluated, and immediately garbage-collected.
 

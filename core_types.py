@@ -114,7 +114,7 @@ class ASTNode:
     def evaluate(self, context) -> str:
         raise NotImplementedError
 
-# class InvocationObject(ASTNode):
+# class InvocationNode(ASTNode):
 #     def evaluate(self, context):
 #         # 1. Get the raw string
 #         raw_string = context.get_accumulated_value(self.key)

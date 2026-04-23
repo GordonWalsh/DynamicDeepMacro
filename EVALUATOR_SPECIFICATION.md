@@ -82,7 +82,7 @@ Result: "bright sky with bright clouds"
 - Scan transformed text for `< >` boundaries
 - For each boundary pair:
   - Extract content (may contain nested boundaries)
-  - Create InvocationObject with content as raw_text
+  - Create InvocationNode with content as raw_text
   - Add to node's content_parts as child node
 - Preserve literal text between boundaries
 
@@ -347,7 +347,7 @@ Result: "cat dog"
 
 ## Invocation Resolution
 
-When an InvocationObject's raw_text is evaluated:
+When an InvocationNode's raw_text is evaluated:
 
 1. **Lookup:** Search context stack for a definition matching the raw_text
    TODO the strong-weak distinction naturally happens by how they are added, just search left-to-right
@@ -359,7 +359,7 @@ When an InvocationObject's raw_text is evaluated:
    - Retrieve all DEFINITION nodes with `pattern_class='BOUNDED'`
    - Apply to raw_text (same as Phases 2/5)
 
-3. **Return:** The resolved value becomes the InvocationObject's output
+3. **Return:** The resolved value becomes the InvocationNode's output
 
 **Example:**
 

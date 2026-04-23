@@ -34,7 +34,7 @@ Previous iterations of this project fell into architectural traps. **Do not repe
 
 **Immediate Next Session Goals:**
 
-1. **The Holistic Pipeline:** Draft the complete step-by-step information flow describing exactly how a raw string becomes final literal text, relying heavily on the new multi-pass process (Expansion Pass vs. Execution Pass; plus Resolution and Segment Selection).
+1. **The Holistic Pipeline:** Draft the complete step-by-step internal logic for the pipeline phases, describing exactly how a raw string becomes final literal text using the Symmetrical Tree-Walk strategy (Expansion Phase on UnscopedInvocation Nodes, Execution Phase on Text/ScopedInvocation/Scope Nodes).
 2. **Modifier / Syntax Ambiguities:** Define the exact JIT order of operations for how `$$` Modifiers interact with `|` Splits, Unscoped Invocations, and specifically how Modifiers apply to the _Resolved Values_ of Evaluated Keys.
 3. **Document Updates:** Use the new Holistic Pipeline to rewrite `ARCHITECTURE_MANIFESTO.md` and `EVALUATOR_SPECIFICATION.md`.
 4. **Trace Implementation Specs:** Define the exact schema for the PRNG Trace object (tracking Option Selection).

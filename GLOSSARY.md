@@ -4,16 +4,15 @@ This document establishes the strict domain language for the Macro Engine. These
 
 ## 1. The Syntax Tree & Hierarchy
 
-- **1.1. AST Node:** An ephemeral, polymorphic object (`TextNode`, `ScopeNode`) that encapsulates Execution and string generation logic. Note: Invocations are transient directives, not lingering AST Nodes.
+- **1.1. AST Node:** An ephemeral, polymorphic object (eg, `TextNode`, `ScopeNode`, `ScopedInvocationNode`, `UnscopedInvocationNode`, `PositionalNode`). It represents any parsed structural element that requires further processing (from trivial `return`s to recursive walks).
 - **1.2. Parent / Child:** Relative structural terms. A Parent Node iterates over its Child Invocations during Expansion and Child Nodes during Execution.
-- **1.3. Top-Level:** Refers to syntax or text occurring at depth `0` relative to the current node's Payload, unhidden by any internal boundaries.
+- **1.3. Top-Level:** Refers to syntax or text occurring at depth `0` relative to the current node's Payload, unhidden by any internal boundaries (eg, including direct text Definitions but not including those from Unscoped Invocations).
 - **1.4. Scope:** The isolated temporal and spatial domain of an AST Node's Execution. Acts as a barrier to Child Nodes inadvertantly affecting the Parent, e.g. by leaking Definitions.
 - **1.5. Token:** The atomic data unit produced by the Lexer. It contains a substring (retaining syntax), its bounding indices, and its structural type (e.g., `TokenType.INVOCATION`), but applies no semantic logic.
-- **1.6 Invocation Object:** A transient resolution primitive that Resolves its Segments and returns Definitions and a List of AST Nodes to its Parent Node. It is completely consumed during the Expansion Phase.
 
 ## 2. State & Determinism
 
-- **2.1. Context Stack (The Context):** The dynamic `MacroContext` data structure passed down the tree. It holds the cumulative memory of active Definitions, the current PRNG Seed information, and the Trace object.
+- **2.1. Context Stack (The Context):** The dynamic `MacroContext` data structure passed down the tree. It holds the cumulative memory of active Definitions, the current PRNG Seed, the Trace object, and a lightweight, ephemeral array of Literal Texts for `PositionalNode`s in the current Invocation frame.
 - **2.2. Local Context:** Definitions owned directly by the current Scope, including those from Unscoped Invocations.
 - **2.3. Global Context:** Definitions inherited from the Context Stack prior to the current Scope's creation.
 - **2.4. PRNG Seed:** A deterministic, path-dependent string used to calculate random rolls. Inherited seeds are modified predictably (e.g., appending an index like `_0` or `_2_Key`) before being used by Children, ensuring branch isolation.

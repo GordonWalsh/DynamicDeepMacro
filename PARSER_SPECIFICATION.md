@@ -30,7 +30,7 @@ This specification outlines the methodical implementation of a Token-to-AST pars
 
 - `TextNode`: Represents plain text spans (e.g., from literal tokens).
 - `DefinitionNode`: Represents definition syntax (e.g., `:key:value` patterns).
-- `InvocationObject`: Represents bounded token invocations (e.g., `<key>` or `{choice}`).
+- `InvocationNode`: Represents bounded token invocations (e.g., `<key>` or `{choice}`).
 - Base `ASTNode` class with common properties (e.g., `node_type`, `raw_text`).
 
 **Architecture**:
@@ -42,7 +42,7 @@ This specification outlines the methodical implementation of a Token-to-AST pars
 - Nodes should be pure semantic containers; they should not carry runtime state such as a context deque or PRNG object.
 - The evaluation-relevant property `is_transparent` belongs to the AST node model because transparency is derived from parsed syntax and affects later scope handling.
 - Two viable designs:
-  - Subclassing AST node types (`TextNode`, `DefinitionNode`, `InvocationObject`) with shared base fields.
+  - Subclassing AST node types (`TextNode`, `DefinitionNode`, `InvocationNode`) with shared base fields.
   - A single `ASTNode` wrapper with a typed `content` field carrying a union of literal/definition/invocation payloads.
   - For clarity and maintainability, the subclassed approach is preferred.
     TODO explain this decision
@@ -70,7 +70,7 @@ This specification outlines the methodical implementation of a Token-to-AST pars
 
 - Parser function `parse_token(token: Token) -> ASTNode` that produces a root node with children.
 - Handle literal tokens → `TextNode`.
-- Handle bounded tokens → `InvocationObject` (initially simple, no nested parsing).
+- Handle bounded tokens → `InvocationNode` (initially simple, no nested parsing).
 - Root node as a container for the sequence of parsed nodes.
 
 **Architecture**:
