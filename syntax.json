@@ -8,25 +8,9 @@
         "behavior": "Prevents the lexer from interpreting the subsequent character as a syntax operator. Standard escape sequences (e.g., \\n, \\t) not preceding a syntax marker are treated as raw literal text unless inside a Regex block or an Anonymous Escape Block.",
         "example": "Literal \\<bracket\\> and a path C:\\new",
         "outcome": "Outputs `<bracket> and a path C:\\new` without initiating an AST node capture or destroying the file path."
-      },
-      "INDEXED_BLOCK_ROUTER": {
-        "syntax": "^[ \\t]*#+[ \\t]*(.*?)[ \\t]*#+[ \\t]*$",
-        "context": "Top-level raw string inputs (prior to AST evaluation).",
-        "description": "A line starting and ending with one or more hash `#` characters, optionally surrounding a title, with optional whitespace padding.",
-        "behavior": "Splits multi-line strings into routed blocks. Accessed via positive (Preamble + Block) or negative (Block Only) integer routing.",
-        "example": "# Header 1 #\nText block here.",
-        "outcome": "Isolates 'Text block here.' for injection into the engine."
-      },
-      "LORA_WRAPPER": {
-        "syntax": "\\[group_name: <lora_string>\\]",
-        "context": "Top-level or inside AST nodes.",
-        "description": "Square brackets enclosing a literal group name, a colon, and the native ComfyUI `<lora:...>` string.",
-        "behavior": "Protects native ComfyUI syntax from macro evaluation, routes the payload to the Trace State Object under `group_name`, and strips the bracket wrapper for final output.",
-        "example": "[lighting: <lora:bright:1.0>]",
-        "outcome": "Final output: `<lora:bright:1.0>`. Trace Log: `lighting: ['<lora:bright:1.0>']`."
       }
     },
-    "2_STATE_MUTATIONS_DEFINITIONS": {
+    "FIXME_2_STATE_MUTATIONS_DEFINITIONS": {
       "ORTHOGONAL_MATRIX_RULES": "Definitions follow [CLASS][KEY_PATTERN][POSITION][STRENGTH][VALUE_PATTERN] syntax. CLASS, POSITION and STRENGTH determine evaluation behavior; KEY_PATTERN and VALUE_PATTERN can each be either literal text or a regex (/pattern/). Definitions must appear at the start of a parsed line or segment, and for the time being, the VALUE_PATTERN strictly terminates at the End-of-Line (\\n).",
       "SYNTAX_COMPOSITION_TABLE": {
         "description": "Complete list of valid definition syntax patterns",
@@ -112,7 +96,7 @@
         "description": "A string enclosed entirely by forward slashes. Applied to both KEY and VALUE independently.",
         "behavior": "Parsed as a Regular Expression. Supports native Python regex syntax, backreferences, and named groups."
       },
-      "PATTERN_TYPE_LITERAL": {
+      "PATTERN_TYPE_TEXT": {
         "syntax": "literal_string",
         "description": "Any string not enclosed by forward slashes. Applied to both KEY and VALUE independently.",
         "behavior": "Exact string matching (for KEY) or literal replacement (for VALUE)."
@@ -190,7 +174,7 @@
         "example": "<subject|:color::yellow>",
         "outcome": "Evaluates `subject` with `color` as `yellow` ONLY IF no higher-priority definition exists."
       },
-      "ATOMIC_ASSIGN_AND_RETURN": {
+      "DELETEME_ATOMIC_ASSIGN_AND_RETURN": {
         "syntax": "<key:value>",
         "context": "Inline text.",
         "description": "A literal key and literal value separated by a single colon, enclosed in angle brackets.",
@@ -198,7 +182,7 @@
         "example": "The <man:gentleman> arrived.",
         "outcome": "Outputs 'The gentleman arrived' and registers `man:gentleman` as a strong definition for subsequent sibling nodes."
       },
-      "ATOMIC_ASSIGN_DEFAULT_AND_RETURN": {
+      "DELETEME_ATOMIC_ASSIGN_DEFAULT_AND_RETURN": {
         "syntax": "<key::value>",
         "context": "Inline text.",
         "description": "A literal key and literal value separated by a double colon, enclosed in angle brackets.",
@@ -224,7 +208,7 @@
         "example": ":cyberpunk:<<\n:lighting:neon\n>>",
         "outcome": "Defines the key 'cyberpunk' with a string value containing a literal newline, the text ':lighting:neon', and another literal newline."
       },
-      "SCOPE_SIBLINGS": {
+      "FIXME_SCOPE_SIBLINGS": {
         "syntax": "<key|<MacroA>|<MacroB>>",
         "context": "Inline text, wrapping multiple invocations.",
         "description": "A key, followed by a pipe `|`, followed by invocations separated by pipes, enclosed in angle brackets.",
@@ -232,7 +216,7 @@
         "example": "<photo|<SetNumber>|<SetObject>>",
         "outcome": "Definitions hoisted by `<SetNumber>` remain active and accessible during `<SetObject>` evaluation, then definitions from both are active during `<photo>` evaluation, popping only when the outer `< >` terminates."
       },
-      "TRANSPARENT_BLOCK_DUMMY_ROOT": {
+      "FIXME_TRANSPARENT_BLOCK_DUMMY_ROOT": {
         "syntax": "<|<MacroA>|<MacroB>>",
         "context": "Inline text, wrapping multiple invocations.",
         "description": "An opening angle bracket followed immediately by a pipe `|`, followed by macro invocations separated by pipes, closed by an angle bracket.",
@@ -240,7 +224,7 @@
         "example": "<|<SetColors>>A <ColorA> hat and <ColorB> coat.",
         "outcome": "Definitions hoisted by `<SetColors>` remain active and accessible during later evaluations, popping only when the current node terminates."
       },
-      "INLINE_LOCAL_DEFINITION": {
+      "FIXME_INLINE_LOCAL_DEFINITION": {
         "syntax": "<|:arg1::val1>",
         "context": "Inline text.",
         "description": "Same as the Transparent Block Dummy Root, but with a single argument definition literal instead of macro invocation.",
@@ -320,7 +304,7 @@
     "7_DEFERRED_STRETCH_FEATURES": {
       "POSITIONAL_ARGUMENTS": {
         "syntax": "<0>, <1>",
-        "status": "Deferred to V2",
+        "status": "In planning",
         "description": "Numeric digits enclosed in angle brackets.",
         "behavior": "Accessing parameterized arguments by integer index rather than explicit key string."
       },
@@ -335,6 +319,22 @@
         "status": "Deferred to V2",
         "description": "A leading integer (or range) prefixed with a dollar sign `$`, followed by standard quantity modifiers.",
         "behavior": "Restricting the PRNG pool to specific indices of the provided options before selection."
+      },
+      "INDEXED_BLOCK_ROUTER": {
+        "syntax": "^[ \\t]*#+[ \\t]*(.*?)[ \\t]*#+[ \\t]*$",
+        "context": "Top-level raw string inputs (prior to AST evaluation).",
+        "description": "A line starting and ending with one or more hash `#` characters, optionally surrounding a title, with optional whitespace padding.",
+        "behavior": "ComfyUI feature, not a core macro engine behavior. Splits multi-line strings into routed blocks. Accessed via positive (Preamble + Block) or negative (Block Only) integer routing.",
+        "example": "# Header 1 #\nText block here.",
+        "outcome": "Isolates 'Text block here.' for injection into the engine."
+      },
+      "LORA_WRAPPER": {
+        "syntax": "\\[group_name: <lora_string>\\]",
+        "context": "Top-level or inside AST nodes.",
+        "description": "Square brackets enclosing a literal group name, a colon, and the native ComfyUI `<lora:...>` string. TODO review",
+        "behavior": "Protects native ComfyUI syntax from macro evaluation, routes the payload to the Trace State Object under `group_name`, and strips the bracket wrapper for final output. TODO review",
+        "example": "[lighting: <lora:bright:1.0>]",
+        "outcome": "Final output: `<lora:bright:1.0>`. Trace Log: `lighting: ['<lora:bright:1.0>']`."
       }
     }
   }

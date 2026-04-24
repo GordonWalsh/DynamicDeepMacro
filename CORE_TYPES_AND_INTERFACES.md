@@ -26,14 +26,13 @@ This document specifies the data structures passed between stages and the invari
 
 **Fields:**
 
-- `value` (str): Unprocessed token content (includes internal boundary markers if applicable).
+- `content` (str): Unprocessed token content (includes internal boundary markers if applicable).
 - `position` (int): Character offset of the start marker in the input string.
 - `length` (int): Number of characters consumed.
 - `token_type` (`TokenType` Enum) is one of:
   - `'TEXT'`: Basic plain text; no internal parsing required. Local Pre-Patterns still apply.
   - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
-  - `'INVOCATION'`: A bounded token (`< >`) intended to be resolved against the Context Stack. Includes both Scoped (`<...>`) and Unscoped (`<|...>`).
-  - `'POSITIONAL'`: A bounded digit token (e.g., `<0>`, `<1>`) referencing an Evaluated Parent Invocation Segment. Similar UX behavior to other Invocations, but processed differently internally. TODO I don't think this is a Token type pre-Parsing?
+  - `INVOCATION`: A bounded token (`< >`) intended to be Resolved against Definitions. The Lexer does not identify Positional Invocations vs normal, nor Scoped vs Unscoped. That must be handled by the Parser. All variations will simply produce base INVOCATION Tokens.
   - `'SCOPE'`: A bounded substring (`{ }`) intended to trigger PRNG Option Selection or isolate the contents.
   - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
   - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocation Segments or `|`-divided Raw Text Scope Node Payloads.
@@ -60,7 +59,7 @@ This document specifies the data structures passed between stages and the invari
   - `'BASE'`: Search-terminating root value.
   - `'LEFT'`: Prepended to the base/match.
   - `'RIGHT'`: Appended to the base/match.
-- `strength` (str): `'STRONG'` (Stack HEAD) or `'WEAK'` (Stack TAIL).
+- `strength` (str): `'STRONG'` (Stack HEAD) or `'WEAK'` (Stack TAIL). TODO this should be unneeded.
 - `key_is_regex` (bool): Key uses `/ /` delimiters.
 - `value_is_regex` (bool): Value uses `/ /` delimiters.
 - `key` (str): Pattern or identifier to match (delimiters stripped).
@@ -93,7 +92,7 @@ This document specifies the data structures passed between stages and the invari
 **Invariants:**
 
 - The Parser strictly returns `ASTNode` objects and Definitions, never raw `Token` objects, in its output list.
-- Inner boundaries in the content strings of `InvocationNode` and `ScopeNode` are stored as raw strings; they are not parsed into child trees until `.evaluate()` is explicitly called.
+- Inner boundaries in the content strings of Nodes are stored as raw strings; they are not parsed into child trees on creation.
 
 ### MacroContext Class (Evaluator State)
 
@@ -108,7 +107,7 @@ This document specifies the data structures passed between stages and the invari
 
 **Methods:**
 
-TODO confirm these
+TODO confirm these:
 - `push(definitions: List[Definition]) → None`: Inserts definitions into the deque.
 - `get_definitions(key: str) → Tuple[Optional[Definition], List[Definition]]`: Traverses the deque Left-to-Right. Accumulates `LEFT` and `RIGHT` modifiers into a list. Terminates search and returns `(Base_Definition, Modifiers_List)` upon hitting a `BASE`.
 - `get_unbounded_patterns(pattern_class: str) → List[Definition]`: Returns discrete `PRE` or `POST` patterns in priority order.
@@ -151,6 +150,6 @@ TODO this section needs to be replaced with better Expansion and Execution secti
 ## Related Documentation
 
 - [LEXER_SPECIFICATION.md](LEXER_SPECIFICATION.md) - String → Token lexing details
-- [PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parsing details
-- [EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String evaluation details
+- ~~[PARSER_SPECIFICATION.md](PARSER_SPECIFICATION.md) - Token → AST parsing details~~
+- ~~[EVALUATOR_SPECIFICATION.md](EVALUATOR_SPECIFICATION.md) - AST → String evaluation details~~
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) - Project context and agent guidelines

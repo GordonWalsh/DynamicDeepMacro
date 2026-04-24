@@ -21,7 +21,7 @@ from core_types import Token, TokenType
 
 # MVP structural constants (to be replaced by dynamic SyntaxConfig later)
 SYNTAX_CHARACTERS = r'\\:/<>{}\|'
-priority = dict({TokenType.DEFINITION: 4, TokenType.SCOPE: 3, TokenType.INVOCATION: 2, TokenType.LITERAL: -1})
+priority = dict({TokenType.DEFINITION: 4, TokenType.SCOPE: 3, TokenType.INVOCATION: 2, TokenType.TEXT: -1})
 
 def lex(text: str) -> List[Token]:
     """
@@ -156,15 +156,15 @@ def lex(text: str) -> List[Token]:
         # Capture preceding literal text
         if start > last_idx:
             tokens.append(Token(
-                value=text[last_idx:start], 
+                content=text[last_idx:start], 
                 position=last_idx, 
                 length=start - last_idx, 
-                token_type=TokenType.LITERAL
+                token_type=TokenType.TEXT
             ))
         
         # Capture the bounded token
         tokens.append(Token(
-            value=text[start:end + 1], 
+            content=text[start:end + 1], 
             position=start, 
             length=(end + 1) - start, 
             token_type=token_type
@@ -174,10 +174,10 @@ def lex(text: str) -> List[Token]:
     # Capture trailing literal text
     if last_idx < n:
         tokens.append(Token(
-            value=text[last_idx:n], 
+            content=text[last_idx:n], 
             position=last_idx, 
             length=n - last_idx, 
-            token_type=TokenType.LITERAL
+            token_type=TokenType.TEXT
         ))
         
     return tokens
@@ -339,7 +339,7 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
     if not top_level_intervals:
         # No tokens: return entire text as a single literal token if non-empty
         if text:
-            return [Token(position=0, length=len(text), token_type=TokenType.LITERAL, value=text)]
+            return [Token(position=0, length=len(text), token_type=TokenType.TEXT, content=text)]
         return []
     
     result = []
@@ -352,8 +352,8 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
             result.append(Token(
                 position=last_end,
                 length=start_idx - 1-last_end,
-                token_type=TokenType.LITERAL,
-                value=literal_text
+                token_type=TokenType.TEXT,
+                content=literal_text
             ))
         
         # Add the bounded token
@@ -362,7 +362,7 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
             position=start_idx,
             length=end_idx - start_idx,
             token_type=TokenType.INVOCATION if boundaries[type_id] == ('<', '>') else TokenType.SCOPE,
-            value=token_text
+            content=token_text
         )
         result.append(token)
         last_end = end_idx + 1
@@ -373,8 +373,8 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
         result.append(Token(
             position=last_end,
             length=len(text) - 1 - last_end,
-            token_type=TokenType.LITERAL,
-            value=literal_text
+            token_type=TokenType.TEXT,
+            content=literal_text
         ))
     
     return result

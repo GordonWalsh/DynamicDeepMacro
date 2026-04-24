@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 class TokenType(Enum):
-    LITERAL = auto()     # Plain text
+    TEXT = auto()     # Plain text
     DEFINITION = auto()  # Bounded macro, pre-pattern, or post-pattern rules
     INVOCATION = auto()  # Context Stack lookup wrappers (< >)
     SCOPE = auto()       # Atomic Raw text wrappers ({ })
@@ -26,7 +26,7 @@ class Token:
     position: int
     length: int
     token_type: TokenType
-    value: str
+    content: str
     
     def __eq__(self, other):
         """
@@ -36,7 +36,7 @@ class Token:
         metadata for internal tracking rather than semantic token properties.
         """
         if isinstance(other, Token):
-            return self.value == other.value and self.token_type == other.token_type
+            return self.content == other.content and self.token_type == other.token_type
         return False
 
 @dataclass

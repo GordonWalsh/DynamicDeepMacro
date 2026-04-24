@@ -24,7 +24,7 @@ Instead of slicing and buffering strings character-by-character, the Lexer runs 
 
 - It uses independent pushdown automata (stacks) for each configured boundary type (e.g., `<` and `>`).
 - When an opening marker is found, its integer index is pushed.
-- When a closing marker is found, the stack pops, and the `(start_index, end_index)` pair is registered as a "Candidate Interval".
+- When a closing marker is found, the stack pops and the `(start_index, end_index)` pair is registered as a "Candidate Interval".
 - Discrete markers (like `|` or `$$`) are registered instantly at their integer index without needing a closing pair.
 
 ### 2.2 Zero-Depth Interval Culling
@@ -32,7 +32,7 @@ Instead of slicing and buffering strings character-by-character, the Lexer runs 
 To inherently protect nested syntax and isolate user typos (unbalanced brackets), the Lexer applies a culling algorithm at the end of the pass.
 
 - **The Rule:** If a registered token boundary (e.g., `{ }` or `|`) falls strictly within the index bounds of a higher-order boundary (e.g., `< >`), the inner marker is neutralized.
-- **The Result:** The Lexer only emits zero-depth tokens. The internal contents of macros and groups remain untouched, flat literal strings.
+- **The Result:** The Lexer only emits zero-depth tokens. The internal contents of macros and groups remain untouched, flat strings.
 
 ---
 
@@ -40,16 +40,16 @@ To inherently protect nested syntax and isolate user typos (unbalanced brackets)
 
 ### 3.1 Dynamic Syntax Injection
 
-The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` object at runtime mapping characters to a `TokenType` Enum. This prevents memory bloat on individual `Token` objects, which no longer store their bounding strings.
+TODO: The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` object at runtime mapping characters to a `TokenType` Enum.
 
 **Supported Token Types:**
 
-- `LITERAL`: Plain text.
+- `TEXT`: Plain text, not containing any other syntax. No inherently implied Raw or Literal nature.
 - `DEFINITION`: Bounded macro, pre-pattern, or post-pattern rules.
-- `INVOCATION`: Context Stack lookup wrappers (`< >`).
-- `SCOPE`: Atomic Raw text wrappers (`{ }`).
+- `INVOCATION`: Definition lookup wrappers (`< >`).
+- `SCOPE`: Atomic text wrappers (`{ }`).
 - `SPLIT`: Zero-depth option dividers (`|`).
-- `MODIFIER`: Math/Quantity rules (`2$$`).
+- `MODIFIER`: Selection/Quantity rules (`2$$`).
 
 ---
 
@@ -60,7 +60,7 @@ The Lexer does not hardcode its boundary markers. It receives a `SyntaxConfig` o
 To avoid the "Slash Collision Trap" (destroying file paths or standard regex inputs), the Lexer employs selective escaping using the backslash (`\`).
 
 - A backslash only acts as an escape character if it immediately precedes a custom structural syntax marker defined in the `SyntaxConfig` (e.g., `\<`, `\:`).
-- If escaped, the Lexer ignores the marker for boundary tracking.
+- If escaped, the Lexer ignores the marker for boundary tracking, but does not modify the base text.
 - **Standard escapes (e.g., `\n`, `\t`, `\C:\`) are treated as pure literal text** and are not processed or stripped by the Lexer.
 
 ---
@@ -71,15 +71,15 @@ The Lexer handles macro definitions (`:key:value`) using a dual-mode termination
 
 ### 5.1 End-of-Line (EOL) Termination (Default)
 
-By default, when the Lexer encounters a zero-depth definition header, it tracks the value string until it hits an unescaped newline character (`\n`) or the end of the file.
+By default, when the Lexer encounters a zero-depth definition header, it tracks the value string until it hits a newline character (`\n`) or the end of the string.
 
 ### 5.2 The Multi-Line Value Wrapper (`<< ... >>`)
 
 To support "Container Macros" and multi-line values, the Lexer supports explicit block boundaries that override the EOL termination rule.
 
-- **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the definition's strength marker on the _same line_ (optional spaces/tabs allowed, but no newlines). If found, EOL termination is suspended.
-- **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary. It increments a counter for nested `<<` markers and only closes the block when the outermost `>>` is reached.
-- **Strict Literal Capture:** The Lexer does _not_ chomp newlines. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
+- **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the definition's strength marker on the *same line*. If found, EOL termination is suspended.
+- **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary like other boundary markers. It only closes the block when the outermost `>>` is reached.
+- **Strict Newline Capture:** The Lexer does *not* chomp newlines, it simply captures them in the Definition Token as needed. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
 
 ---
 
@@ -89,5 +89,5 @@ To support "Container Macros" and multi-line values, the Lexer supports explicit
 
 1. **No Lookahead Ambiguity:** Processing relies strictly on stateful index tracking, never complex regex lookaheads.
 2. **Lossless Reconstruction:** Tokens correspond 1:1 with the input. Concatenating the raw text fields of the output tokens will result in an exact, byte-for-byte duplicate of the input string.
-3. **Lazy Isolation:** All—and only—top-level (zero-depth) syntax markers are identified as discrete or bounded tokens. Everything else is guaranteed to be a `LITERAL` token.
-4. **Data Offloading:** The Lexer outputs strongly typed, clean `Token` objects. It does not attempt to parse definitions into key/value pairs, instantiate AST Nodes, or interpret modifiers.
+3. **Lazy Isolation:** All—and only—top-level (zero-depth) syntax markers are identified as discrete or bounded tokens. Everything else is guaranteed to be a `TEXT` token.
+4. **Data Offloading:** The Lexer outputs strongly typed, clean `Token` objects. It does not attempt to parse definitions into key/value pairs, instantiate AST Nodes, differentiate Invocation variants, or interpret modifiers.
