@@ -12,13 +12,13 @@ It uses a Breadth-Eager, Depth-Lazy evaluation strategy. The engine parses flat 
 Your logic must strictly adhere to these axioms. Do not contradict them in specifications or code. You MUST use the exact terminology defined in `GLOSSARY.md`.
 
 - **AXIOM 1: Universal Segment Equivalence:** Inside an Invocation (`<...>`), all Segments separated by `|` follow identical evaluation rules based purely on their leading character.
-  - **No leading `:`** -> It is a Raw Key. It must be Evaluated and Resolved against the Context Stack.
-  - **Leading `:` (Valid Def)** -> It is a Definition. It is hoisted into the local Scope.
-  - **Leading `:` (Invalid Def)** -> It is inert data, essentially a bare Value without a Key. It is held locally for positional referencing.
+    - **No leading `:`** -> It is a Raw Key. It must be Evaluated and Resolved against the Context Stack.
+    - **Leading `:` (Valid Def)** -> It is a Definition. It is hoisted into the local Scope.
+    - **Leading `:` (Invalid Def)** -> It is inert data, essentially a bare Value without a Key. It is held locally for positional referencing.
 - **AXIOM 2: Positional Mapping:** Positional digit invocations (`<0>`, `<1>`) strictly map to the Segment indices of the current Scope. `<0>` is always the Evaluated Key of Segment 0. `<1>` is the Evaluated Key of Segment 1 (or its Raw Value if it was Definition-coded).
 - **AXIOM 3: Scope Equivalence (Scoped vs. Unscoped):** There is ZERO difference in how the internal payload of an Invocation is evaluated. The _only_ difference is the syntactic sugar:
-  - **Unscoped (`<|Macro|...>`):** Signaled by a leading Split marker. Provides its Resolved Values' Definitions and AST Nodes to the Parent's Scope.
-  - **Scoped (`<Macro|...>`):** Wrapped in a ScopeNode before processing. The internal definitions are popped and destroyed. The ScopeNode returns Literal Text to its parent.
+    - **Unscoped (`<|Macro|...>`):** Signaled by a leading Split marker. Provides its Resolved Values' Definitions and AST Nodes to the Parent's Scope.
+    - **Scoped (`<Macro|...>`):** Wrapped in a ScopeNode before processing. The internal definitions are popped and destroyed. The ScopeNode returns Literal Text to its parent.
 - **AXIOM 4: JIT String Manipulation:** The exact order of operations for extracting Selection Modifiers (`$$`), parsing segments (`|`), and applying Option Selection is handled dynamically by the Evaluator during node execution, not hardcoded into the Lexer or Parser.
 
 ## 3. The Trap Ledger (Negative Constraints)
@@ -36,12 +36,9 @@ Previous iterations of this project fell into architectural traps. **Do not repe
 
 1. **The Holistic Pipeline:** Draft the complete step-by-step internal logic for the pipeline phases, describing exactly how a raw string becomes final literal text using the Symmetrical Tree-Walk strategy (Expansion Phase on UnscopedInvocation Nodes, Execution Phase on Text/ScopedInvocation/Scope Nodes).
 2. **Modifier / Syntax Ambiguities:** Define the exact JIT order of operations for how `$$` Modifiers interact with `|` Splits, Unscoped Invocations, and specifically how Modifiers apply to the _Resolved Values_ of Evaluated Keys.
-3. **Document Updates:** Use the new Holistic Pipeline to rewrite `ARCHITECTURE_MANIFESTO.md` and `EVALUATOR_SPECIFICATION.md`.
+3. **Document Updates:** Use the new Holistic Pipeline to rewrite `ARCHITECTURE_MANIFESTO.md`.
 4. **Trace Implementation Specs:** Define the exact schema for the PRNG Trace object (tracking Option Selection).
 5. **Seed Pathing Specs:** Define the string manipulation logic for deterministic PRNG seed inheritance.
-6. **"Frozen/Memoized" Randomization Feature (Design Stage):**
-   - *The Problem:* By default, Lazy Evaluation causes randomized definitions (e.g., `:key:{A|B}`) to re-roll on every invocation due to PRNG seed mutation. We need a way to "freeze" a random selection for consistent re-use across a scope (e.g., rolling a character's name once).
-   - *Current MVP Workaround:* Passing the group as a Positional Segment (e.g., `<Macro|{A|B}>`) forces evaluation before the child scope begins, keeping `<1>` consistent within that scope.
-   - *Future Solution Breadcrumbs:* **Prior Thinking, Maybe Out-of-Date:** * Do NOT use True Eager Evaluation (evaluating during Hoisting): It breaks Order Independence (Footnotes) because required context may not be hoisted yet. Furthermore, appending options to an eagerly evaluated literal (e.g., `A` + `|C`) accidentally unfreezes it by creating a new PRNG split `A|C`.
-      - Do NOT use Static PRNG Seeding: If the option pool is expanded via Append Definitions, a static seed applied to a larger pool might mathematically select a different item, causing the "frozen" value to spontaneously change mid-document.
-      - *Recommended Exploration:* **Lazy Memoization.** A syntax flag (e.g., `:key|:val`) that keeps the Definition as Raw Text until its *first* Resolution. It evaluates using the fully realized Context, rolls the PRNG, and then caches/overwrites its own Value-Pattern in the Context Stack with the resulting Literal Text. This allows Append Definitions to safely expand the option pool *before* the first roll locks it.
+6. **Global Recursion & Loop Prevention (TTL/Hit Counters)**
+    - **Issue:** Because the engine supports dynamic string assembly and macro retrieval, users can easily create infinite recursive loops (e.g., `:A:<B>` invoking `:B:<A>`).
+    - **To Resolve:** Implement a systemic loop-prevention mechanism. Options include a `Time-To-Live` (TTL) integer or a `Node Hit Counter` passed through the Context object. When the threshold is reached, the engine must safely halt recursion, likely by returning the remaining syntax as un-evaluated Literal text and concatenating back up to the root, preventing a compiler crash without destroying the valid output generated up to the failure point. Shadowing/blocking previously called Definitions within a single branch should also be explored.

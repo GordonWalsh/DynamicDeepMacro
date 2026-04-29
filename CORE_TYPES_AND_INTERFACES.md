@@ -30,12 +30,12 @@ This document specifies the data structures passed between stages and the invari
 - `position` (int): Character offset of the start marker in the input string.
 - `length` (int): Number of characters consumed.
 - `token_type` (`TokenType` Enum) is one of:
-  - `'TEXT'`: Basic plain text; no internal parsing required. Local Pre-Patterns still apply.
-  - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
-  - `INVOCATION`: A bounded token (`< >`) intended to be Resolved against Definitions. The Lexer does not identify Positional Invocations vs normal, nor Scoped vs Unscoped. That must be handled by the Parser. All variations will simply produce base INVOCATION Tokens.
-  - `'SCOPE'`: A bounded substring (`{ }`) intended to trigger PRNG Option Selection or isolate the contents.
-  - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
-  - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocation Segments or `|`-divided Raw Text Scope Node Payloads.
+    - `'TEXT'`: Basic plain text; no internal parsing required. Local Pre-Patterns still apply.
+    - `'DEFINITION'`: Defines a key/pattern to a replacement value (`:`, `:<`, `:>`, etc.).
+    - `INVOCATION`: A bounded token (`< >`) intended to be Resolved against Definitions. The Lexer does not identify Positional Invocations vs normal, nor Scoped vs Unscoped. That must be handled by the Parser. All variations will simply produce base INVOCATION Tokens.
+    - `'SCOPE'`: A bounded substring (`{ }`) intended to trigger PRNG Option Selection or isolate the contents.
+    - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
+    - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocation Segments or `|`-divided Raw Text Scope Node Payloads.
 
 **Invariants:**
 
@@ -56,9 +56,9 @@ This document specifies the data structures passed between stages and the invari
 
 - `pattern_class` (str): `'PRE'`, `'BOUNDED'`, or `'POST'`.
 - `direction` (str):
-  - `'BASE'`: Search-terminating root value.
-  - `'LEFT'`: Prepended to the base/match.
-  - `'RIGHT'`: Appended to the base/match.
+    - `'BASE'`: Search-terminating root value.
+    - `'LEFT'`: Prepended to the base/match.
+    - `'RIGHT'`: Appended to the base/match.
 - `strength` (str): `'STRONG'` (Stack HEAD) or `'WEAK'` (Stack TAIL). TODO this should be unneeded.
 - `key_is_regex` (bool): Key uses `/ /` delimiters.
 - `value_is_regex` (bool): Value uses `/ /` delimiters.
@@ -73,7 +73,7 @@ This document specifies the data structures passed between stages and the invari
 
 **Purpose:** Represents a semantic unit for further processing. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class.
 
-**Note on Parser Return Type:** The Parser does *not* return a single root node. To avoid creating dummy wrappers, it returns a flat `Tuple[List[Definition], List[ASTNode]]`.
+**Note on Parser Return Type:** The Parser does _not_ return a single root node. To avoid creating dummy wrappers, it returns a flat `Tuple[List[Definition], List[ASTNode]]`.
 
 **Base Interface (`ASTNode`):**
 
@@ -108,6 +108,7 @@ This document specifies the data structures passed between stages and the invari
 **Methods:**
 
 TODO confirm these:
+
 - `push(definitions: List[Definition]) → None`: Inserts definitions into the deque.
 - `get_definitions(key: str) → Tuple[Optional[Definition], List[Definition]]`: Traverses the deque Left-to-Right. Accumulates `LEFT` and `RIGHT` modifiers into a list. Terminates search and returns `(Base_Definition, Modifiers_List)` upon hitting a `BASE`.
 - `get_unbounded_patterns(pattern_class: str) → List[Definition]`: Returns discrete `PRE` or `POST` patterns in priority order.
@@ -118,30 +119,34 @@ TODO confirm these:
 
 ---
 
-## Subsystem Promises
+## Subsystem Contracts & Promises
 
-### Lexer Promises (String → Token List)
+### Lexer Contract
 
-1. **No Lookahead Ambiguity:** Character-by-character processing.
-2. **Lossless:** Tokens correspond 1:1 with boundary rules; concatenating raw token values reconstructs the exact input.
-3. **Lazy Isolation:** All and only top-level (zero-depth) SPLIT and MODIFIER markers are identified as discrete tokens.
-4. **(Block Tracking):** When the Lexer encounters `<<` immediately following a Definition header, it suspends `\n` termination. It uses a pushdown automaton to find the matching `>>` at the current zero-depth level, treating all internal content (including newlines and inner definitions) as the token's raw `value`.
+TODO Integrate or insert Selection into this transition
+What the Lexer guarantees:
 
-#### Parser Promises (Token List → ASTNode)
+1. **No Lookahead Ambiguity:** Processing relies strictly on stateful index tracking, never complex regex lookaheads.
+2. **Lossless Reconstruction:** Tokens correspond 1:1 with the input. Concatenating the raw text fields of the output tokens will result in an exact, byte-for-byte duplicate of the input string.
+3. **Lazy Isolation:** All—and only—top-level (zero-depth) syntax markers are identified as discrete or bounded tokens. Everything else is guaranteed to be a TEXT token.
+4. **Data Offloading:** The Lexer outputs strongly typed, clean Token objects. It does not attempt to parse definitions into key/value pairs, instantiate AST Nodes, differentiate Invocation variants, or interpret modifiers.
 
-1. **State/Data Decoupling:** Separates `DEFINITION` tokens from Node tokens.
-2. **Object Instantiation:** Parses raw definition strings into strongly typed `Definition` objects.
-3. **Polymorphic Mapping (Breadth Eagerness):** Maps the remaining zero-depth execution tokens into their corresponding `ASTNode` subclasses (e.g., `TextNode`, `ScopeNode`, etc) and returns them alongside the hoisted definitions as a `Tuple`.
-4. **Depth Laziness:** Never lexes or parses the internal string contents of an `INVOCATION` or `SCOPE` token.
-5. **Selective Escape Stripping:** The Parser strictly strips escape characters (`\`) *only* when they precede custom structural syntax markers. It preserves all standard text escapes (`\n`, `\t`, `\d`) as literal strings, leaving them fully intact for downstream regex compilation or escape decoding.
-6. **AST Subclassing**: The Parser distinguishes Invocation intents immediately, outputting explicit `ScopedInvocationNode`, `UnscopedInvocationNode`, or `PositionalNode` objects.
+### Parser Contract
+
+What the Parser guarantees:
+
+1. The Parser interprets the Tokenized strings into code Objects with semantic meanings. It does not apply string transformation logic or recursion by itself.
+2. **Polymorphic Processing:** Processing (eg Expansion, Execution) logic is entirely encapsulated within the methods of the AST subclasses, eliminating procedural type-checking.
+3. **Explicit Intent:** The Parser distinguishes Invocation intents immediately, outputting explicit `ScopedInvocationNode`, `UnscopedInvocationNode`, or `PositionalNode` objects (in addition to the non-Invocation objects).
+4. **Selective Escape Stripping:** The Parser strictly strips escape characters (`\`) _only_ when they precede custom structural syntax markers (ie the input intent is for the character to be understood as just the character, not the escape character, but in a different type of object than the input string with just the unescaped character would have produced). It preserves all standard text escapes (eg `\n`, `\t`, `\d`) as literal strings, leaving them fully intact for downstream regex compilation or escape decoding. TODO should we strip escaped backslash `\\` to a single backslash, or would that just wastefully force a user to use 4x backslashes to, for example, get a single backslash in a Regex Pattern; should we use a different escape character to not overlap, eg tick '`'?
 
 #### Evaluator Promises (ASTNode + Context → String)
 
 TODO this section needs to be replaced with better Expansion and Execution sections
+
 1. **Distinct Option Selection Timing:** Option Selection is handled dynamically based on the object type.
     - **ScopeNodes (Raw Text):** Perform Option Selection immediately after `LexAndSegment` to cull unselected branches before Parsing.
-    - **InvocationNodes (Dictionary Queries):** Do *not* cull Segments natively. They `LexAndSegment`, Resolve all Segments against the dictionary, and then apply Modifiers to the *Resolved Values* individually to Select Options.
+    - **InvocationNodes (Dictionary Queries):** Do _not_ cull Segments natively. They `LexAndSegment`, Resolve all Segments against the dictionary, and then apply Modifiers to the _Resolved Values_ individually to Select Options.
 2. **Polymorphic Execution:** Execution logic is entirely encapsulated within the `.execute()` methods of the AST subclasses, eliminating procedural type-checking.
 3. **Ephemeral Instantiation:** Child AST branches generated during macro expansion or Group selection are instantiated dynamically, evaluated, and immediately garbage-collected.
 

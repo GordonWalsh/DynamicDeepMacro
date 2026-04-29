@@ -77,17 +77,6 @@ By default, when the Lexer encounters a zero-depth definition header, it tracks 
 
 To support "Container Macros" and multi-line values, the Lexer supports explicit block boundaries that override the EOL termination rule.
 
-- **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the definition's strength marker on the *same line*. If found, EOL termination is suspended.
+- **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the definition's strength marker on the _same line_. If found, EOL termination is suspended.
 - **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary like other boundary markers. It only closes the block when the outermost `>>` is reached.
-- **Strict Newline Capture:** The Lexer does *not* chomp newlines, it simply captures them in the Definition Token as needed. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
-
----
-
-## 6\. Lexer-Parser Contract
-
-**What the Lexer guarantees to the Parser:**
-
-1. **No Lookahead Ambiguity:** Processing relies strictly on stateful index tracking, never complex regex lookaheads.
-2. **Lossless Reconstruction:** Tokens correspond 1:1 with the input. Concatenating the raw text fields of the output tokens will result in an exact, byte-for-byte duplicate of the input string.
-3. **Lazy Isolation:** All—and only—top-level (zero-depth) syntax markers are identified as discrete or bounded tokens. Everything else is guaranteed to be a `TEXT` token.
-4. **Data Offloading:** The Lexer outputs strongly typed, clean `Token` objects. It does not attempt to parse definitions into key/value pairs, instantiate AST Nodes, differentiate Invocation variants, or interpret modifiers.
+- **Strict Newline Capture:** The Lexer does _not_ chomp newlines, it simply captures them in the Definition Token as needed. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
