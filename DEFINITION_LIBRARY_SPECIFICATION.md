@@ -22,8 +22,8 @@ The parsing logic for Definition syntax follows the pattern: `[Timing][Class]Key
     - `<` -> Left-Concat (Prepends to the base/match)
     - `>` -> Right-Concat (Appends to the base/match)
 4. **Strength (Stack Priority - Override Level):**
-    - `:` -> Strong (Pushed to HEAD, evaluated first, acts as local override)
-    - `::` -> Weak (Pushed to TAIL, evaluated last, acts as global fallback)
+    - `:` -> Strong (Pushed to "Head", evaluated first, acts as local override)
+    - `::` -> Weak (Pushed to "Tail", evaluated last, acts as global fallback)
 
 _Example Combinations:_
 
@@ -47,17 +47,17 @@ Rough pseudocode for how the Definition Token handler would work:
 def process_definition_token(token, target_library, context=None):
     # 1. Universal Extraction (Shared Lazy + Eager)
     pattern_class, direction, is_strong, key, key_is_regex, value, value_is_regex  = extract_syntax_features(token)
-    
+
     # 2. The Eager Intercept (The only difference)
     if token.type == TokenType.DEF_EAGER:
         if not context:
             raise CompilerError("Eager definitions require an active Context.")
         literal_val = context.evaluate(raw_value)
         raw_value = f"</{escape_hex(literal_val)}/>"
-        
+
     # 3. Universal Object Creation
     def_obj = Definition(pattern_class, direction, key, key_is_regex, value, value_is_regex)
-    
+
     # 4. Universal Routing
     if is_strong:
         target_library.push_strong(def_obj)
@@ -67,9 +67,7 @@ def process_definition_token(token, target_library, context=None):
 
 ## Library
 
-TODO: Change from `deque`s to `List`s and use index-based tracking.
-    - In addition to/instead of `wrap_with`, have an `add_local` that doesn't do Scope-index merging math.
-    - Maybe helper function(s) to get/add 6-Tuple lengths.
+TODO: Change from `deque`s to `List`s and use index-based tracking. - STATUS: `core_types.py` has a `List`-based implementation, just the documentation here is outdated. - In addition to/instead of `wrap_with`, have an `add_local` that doesn't do Scope-index merging math. - Maybe helper function(s) to get/add 6-Tuple lengths.
 
 The `DefLibrary` is the dedicated Definition-management container for the Macro Engine. It handles the storage, scoping, and retrieval of `Definition` objects that were created explicitly (i.e., byt the user typing in the above creation syntax). It does not handle implicit "Definitions" such as those used by Positional Invocations. It is strictly a storage and lookup mechanism, with some very minor concatenations or Regex substitutions as directed by the contained Definitions; it does not parse Raw Text, manipulate the root user input text, or manage Option Selection probability.
 

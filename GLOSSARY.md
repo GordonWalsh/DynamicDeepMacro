@@ -1,6 +1,7 @@
 # The Official Macro Engine Glossary
 
 This document establishes the strict domain language for the Macro Engine. These terms must be used consistently across all specifications, code variables, and logic discussions to prevent semantic collisions.
+TODO 2026-05-08: This document needs to be reviewed following pipeline updates and optimizations to `Token`s.
 
 ## 1. The Syntax Tree & Hierarchy
 
@@ -48,6 +49,8 @@ This document establishes the strict domain language for the Macro Engine. These
 - **5.8: Selection:** The process of turning the Option pool into a single data stream/object; or the winning Option(s) remaining _after_ Option Selection, concatenated with any applicable Separator text.
 
 ## 6. Engine Processes
+
+TODO: Update these, and possibly add new items to reflect the evolved pipeline.
 
 - **6.1: Lexing:** The single-pass process of converting Raw Text into a flat list of zero-depth Tokens.
 - **6.2: Parsing:** The direct mapping of a Lexer Token to a corresponding code object (eg a Definition or AST Node). It applies no recursive string logic itself.

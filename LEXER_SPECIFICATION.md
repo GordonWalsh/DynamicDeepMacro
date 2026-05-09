@@ -11,10 +11,12 @@ To bypass the catastrophic performance penalties of Python string buffering, the
 ## 2. Input & Output Signatures
 
 **Input:**
+
 1. A raw text string.
-2. `is_invocation_payload` (Boolean, default `False`): A flag indicating the text is the isolated interior of an Invocation token.
+2. `is_invocation` (Boolean, default `False`): A flag indicating the text is the isolated interior of an Invocation, modifying some behaviors slightly to support streamlined UX.
 
 **Output:** `List[List[Token]]`
+
 - The Lexer _always_ returns a list of Segments (which are themselves lists of Tokens). If no valid Segment dividers (`|`) exist, it simply returns a single-item outer list containing the lexed Tokens (e.g., `[[Token_1, Token_2]]`).
 
 ## 3. Core Lexing Architecture
@@ -43,6 +45,18 @@ When `is_invocation_payload=True`, the Lexer applies these internal state shifts
 
 Modifiers (`$$`) are extracted from the boundaries of valid Segments in _both_ modes. The Lexer scans from the start of each resolved segment up to the last `$$` marker, stripping it from the payload and emitting it as a Modifier Token. Interpretation of multiple modifiers is deferred to the Parser.
 
+### 3.4 Token Emission & String Views
+
+The Lexer does not directly slice or copy text. It acts as a geometric surveyor returning a map of boundaries, not the actual boundary contents. All emitted Tokens are "String Views" containing a reference to the original, immutable `root_string` and their spatial integer coordinates (`start`, `end`, and optionally `separator_idx`). String memory allocation is deferred until the string object itself is needed.
+
+### 3.5 Selective Escape Stripping
+
+To avoid the "Slash Collision Trap" (destroying file paths or standard regex inputs), the Lexer employs selective escaping using the backslash (`\`).
+
+- A backslash only acts as an escape character if it immediately precedes a custom structural syntax marker used by the engine (e.g., `\<`, `\:`, but not newlines).
+- If escaped, the Lexer ignores the marker for boundary tracking, but does not modify the base text.
+- **Standard escapes (e.g., `\n`, `\t`, `\C:\`) are treated as pure literal text** and are not processed or stripped by the Lexer.
+
 ## 4. The Rigidity Hierarchy & Interval Culling
 
 TODO: Validate the following WRT structural hierarchy.
@@ -61,7 +75,7 @@ The hierarchy, from hardest to softest, for **standard text** is:
     - Encompasses both Lazy and Eager Definitions, which will be divided later. Terminates at the end of the line. Safely encapsulates any `|` characters within its bounds.
 5. **Segments (`|`)**
     - Divides text into Segments if outside a Definition, Scope, or Invocation.
-6. **Priority 6: Modifiers (`$$`)**
+6. **Modifiers (`$$`)**
 
 For **Invocation Payloads (`is_invocation_payload = True`)**, the order is:
 
@@ -71,15 +85,58 @@ For **Invocation Payloads (`is_invocation_payload = True`)**, the order is:
 4. **Segments (`|`)**
     - Above standard Definitions, not consumed by them.
 5. **Standard Definitions and Arguments (`: |`)**
-6. **Priority 6: Modifiers (`$$`)**
+6. **Modifiers (`$$`)**
 
 ## 5. Token Generation
 
 After the culling process finalizes the array of top-level intervals:
+
 1. The Lexer iterates over the intervals.
 2. Literal text between intervals is captured as `TokenType.TEXT`.
-3. The bounded intervals are mapped to their respective `TokenType` enums (e.g., `INVOCATION`, `SCOPE`, `DEFINITION`).
+3. The bounded intervals are mapped to their respective `TokenType` enums (e.g., `INVOCATION`, `SCOPE`, etc.).
 4. The final flat list of Tokens is split along any `TokenType.SPLIT` (`|`) tokens, assembling the final `List[List[Token]]` to be returned to the Parser.
+
+## 6. TODO Definition Algorithm
+
+- TODO: Describe how the interval merging and nested consumption works.
+- TODO: the exact methodology of shadowing or culling lower priorities is TBD. Could be a separate shadow index Set or interval-List, or could be an operation to modify the lower bins directly.
+
+### Pushdown Automata Algorithm
+
+After the initial string scan, all (unescaped) potential start and end indices for each particular class/priority of Token will be in a single array/List "bin", with the end indices negated but ordered by their true position, that is pre-sorted by nature of its generation. At the time a bin is processed, the necessary shadowing from earlier priorities has already been actioned, so the only interactions that need to be handled are when an earlier interval is completely enclosed and consumed.
+
+The Lexer iterates over these indices in the bin. As stated, an entry at index 0 will always be interpreted as a start index. During each pass, it keeps a stack of start indices, a list of top-level intervals, and a single "current" pending interval. When an available/unshadowed start (positive) index is encountered, it is pushed onto the stack. When an end index (negative) is encountered, the top start index is popped off the stack and joined to the end index to replace/create the pending interval. When there is no unmatched start index (or hitting a new start from an empty stack) or the end of the index list is hit, the pending interval is moved to the top-level list, and any remaining unmatched starts are dropped.
+
+### Newline Interval Interruption
+
+Only the intervals for Multi-Line Definition Blocks may span a newline `\n`, and standard EOL Definitions may capture their terminating newline, but all other intervals may not contain it. If the Pushdown Automata crosses a newline with unmatched indices in the stack, it triggers the same stack dump and save-pending-interval behavior as the end of list.
+
+### Quasi-Definition Special Procedure
+
+- TODO need to double-check exactly how the starts of multi-line Definition blocks are validated now. Don't have the same in-scan logic any more (though maybe it should have something?)
+  The Definition utilizes the same automaton sweep to classify Quasi-Definition Interval Candidates as either Eager or Lazy and as a Definition or Argument. It does this by saving the indices of all unescaped `:` during the initial string scan, then checking the character preceding the saved indices during the index list sweep. Because the only way to trigger a Definition start would also end a preceding (non-multi-line) Definition, they cannot nest themselves without being consumed/shadowed by a harder interval.
+
+**Start Validation:** Iterate forward. A positive integer is a valid `start_idx` ONLY if it satisfies the **Leading Constraint**: `idx == 0` or `text[idx - 1] == def_boundary` (where `def_boundary` is `\n` in Standard Mode, or `|` in Invocation Mode).
+
+**The Forward Walk:** Once a valid `start_idx` is locked, continue walking forward in the array:
+
+- _Positive Number (Colon):_
+    - If `value == start_idx + 1`, flag `is_eager = True`.
+    - Otherwise, flag `has_separator = True` and record `separator_idx = value`. (Ignore any further positive integers).
+- _Negative Number (Terminator):_ This establishes `end_idx = abs(value)`. The interval `[start_idx, end_idx)` is closed and the flags can be checked to determine the type:
+    - **If `has_separator == True`:** The syntax is a valid Definition. Cast its zero-depth shadow. Emit `DEFINITION_EAGER` or `DEFINITION_LAZY` based on `is_eager` and pass the `separator_idx` into the Token.
+    - **If `has_separator == False`:** The interval was not a Definition, but may be an Argument depending on the calling Invocation mode.
+        - _Standard Mode:_ Discard the interval. It casts no shadow. It degrades to raw text.
+        - _Invocation Mode:_ Lock the interval and cast its shadow. Emit `ARGUMENT_EAGER` or `ARGUMENT_LAZY` (no `separator_idx` passed).
+
+### The Multi-Line Value Wrapper (`<< ... >>`)
+
+TODO: Review this section WRT the new scan-sweep algorithm
+To support "Container Macros" and multi-line values, the Lexer supports explicit block boundaries that override the EOL termination rule.
+
+- **The Mode-Switch Rule:** The opening wrapper (`<<`) must immediately follow the Definition's strength marker on the _same line_. If found, EOL termination is suspended.
+- **The Nested Block Trap:** The Lexer cannot just blindly scan for the first `>>`. Because blocks can contain other blocks, the Lexer treats `<<` and `>>` as a paired pushdown-automaton boundary like other boundary markers. It only closes the block when the outermost `>>` is reached.
+- **Strict Newline Capture:** The Lexer does _not_ chomp newlines, it simply captures them in the Definition Token as needed. Leading, trailing, and internal newlines inside the `<< >>` block are preserved perfectly, granting the user explicit control over text flow.
 
 ## OLD Lexer Specification
 

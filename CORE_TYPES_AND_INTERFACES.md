@@ -22,11 +22,12 @@ This document specifies the data structures passed between stages and the invari
 
 ## Token Class (Lexer -> Parser interface)
 
+TODO Out of date, maybe just delete and reference another source?
 **Purpose:** Represents an atomic unit identified by the character-by-character pushdown automaton.
 
 ### Token Fields
 
-- `content` (str): Unprocessed token content (includes internal boundary markers if applicable).
+- ~~`content` (str): Unprocessed token content (includes internal boundary markers if applicable).~~
 - `position` (int): Character offset of the start marker in the input string. TBD: maybe delete if unused?
 - `length` (int): Number of characters consumed. TBD: maybe delete if unused?
 - `token_type` (`TokenType` Enum) is one of:
@@ -48,11 +49,13 @@ This document specifies the data structures passed between stages and the invari
 
 ## Definition Class
 
+TODO: Probably delete all this in favor of the version in `DEFINITION_LIBRARY_SPECIFICATIONS.md`
 **Purpose:** Parsed directive from a Definition token, ready for Context Stack insertion.
 
 ### Syntax Matrix and Default Characters
 
 Definitions consist of a 4D orthogonal syntax matrix, detailed in `ARCHITECTURE_MANIFESTO.md`. Briefly `[Timing][Class]KeyPattern[Position][Strength]ValuePattern`, options as follows:
+
 - **Timing:** `:` -> Lazy Evaluation; `::` -> Eager Evaluation
 - **Class:** _Empty_ -> Bounded Macro; `<` -> Unbounded Pre-Pattern; `>` -> Unbounded Post-Pattern
 - **Position:** _Empty_ -> Base Replacement `<` -> Left-Concat; `>` -> Right-Concat
@@ -69,7 +72,7 @@ Definitions consist of a 4D orthogonal syntax matrix, detailed in `ARCHITECTURE_
 - `value_is_regex` (bool): Value used `/ /` delimiters.
 - `key` (str): Pattern or identifier to match (delimiters stripped).
 - `value` (str): Replacement text or format string (delimiters stripped).
-Both Strength and Timing are instructions to the Parser, not part of the state information of the Definition, so they are not saved as fields.
+  Both Strength and Timing are instructions to the Parser, not part of the state information of the Definition, so they are not saved as fields.
 
 ### Definition Invariants
 
@@ -81,11 +84,14 @@ Collection of Definition objects providing functional access. Fully defined in `
 
 ## ASTNode Class
 
+TODO: Many of these descriptions are out of date or replicated elsewhere.
 **Purpose:** Represents a semantic unit for further processing. The Parser maps surviving zero-depth Tokens into specific subclasses of the polymorphic `ASTNode` base class.
 
 ### Base Interface
 
+TODO Shift to Token/"virtual string" contents instead of actual strings
 `ASTNode` superclass contains some generic fields and functions common to all Node types:
+
 - `raw_text` (str): Original text payload before evaluation.
 - TODO: other shared fields and functions
     - TBD: Maybe has a generic `process()` to trigger internal logic that has varying output, maybe optional implementation of `expand()` and/or `execute()`?
@@ -93,7 +99,9 @@ Collection of Definition objects providing functional access. Fully defined in `
 ### Node Subclasses
 
 Each Node subclass represents a specific type of user input and has its own specific internal logic, generally built as a subset of a common overall processing pipeline.
+
 - `TextNode`: Contains Raw text.
+    - TODO could also contain Literal Token or child Nodes with Evaluated Literal Tokens
 - `ScopeNode`: Contains a Raw Payload that may be `|`-Split with a single optional `Modifier` (e.g., `2$$`). Controls Scope Boundaries.
 - `UnscopedInvocationNode`: Contains `|`-Split Segments, each an optional `Modifier`. Key-String Segments are Evaluated preceding Context Stack lookup, with the Parsed Definitions and Nodes returned to the Parent.
 - `ScopedInvocationNode`: Contains `|`-Split Segments, each an optional `Modifier`. Key-String Segments are Evaluated preceding Context Stack lookup, with the resulting Raw Texts subsequently Evaluated and returned as Literal Text.
@@ -113,6 +121,7 @@ Each Node subclass represents a specific type of user input and has its own spec
 - DefLibrary
 - Positional string array: Stores Literal Texts from next-highest Invocation Segments for retrieval by Positional Invocations
     - TODO: Array of strings or Definition objects?
+    - I think the answer is just Tokens.
 - PRNG: Implements path-hashed seed tracking (eg `parent_seed + child_index`) for deterministic sibling generation.
 - Trace object: TODO explain Trace
 - Global TTL Integer?
@@ -151,6 +160,12 @@ What the Parser guarantees:
 ### Node Contract
 
 1. If Scoped, removes (relevant, eg not TTL) changes from the Context DefLibrary and PRNG Seed.
+
+### Other Functions
+
+- Serializer that takes in a List of (assumed to be) Evaluated (Text)Nodes and `"".join()`s their `Token`'s Payloads into a single string.
+- Definition Token handler: Described in `DEFINITIION_LIBRARY_SPECIFICATION.md`; alternate "Parser" for Definition-type `Token`s that applies them to a target DefLibrary and triggers eager Evaluation if needed.
+
 ---
 
 ## Related Documentation
