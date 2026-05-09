@@ -42,3 +42,4 @@ Previous iterations of this project fell into architectural traps. **Do not repe
 6. **Global Recursion & Loop Prevention (TTL/Hit Counters)**
     - **Issue:** Because the engine supports dynamic string assembly and macro retrieval, users can easily create infinite recursive loops (e.g., `:A:<B>` invoking `:B:<A>`).
     - **To Resolve:** Implement a systemic loop-prevention mechanism. Options include a `Time-To-Live` (TTL) integer or a `Node Hit Counter` passed through the Context object. When the threshold is reached, the engine must safely halt recursion, likely by returning the remaining syntax as un-evaluated Literal text and concatenating back up to the root, preventing a compiler crash without destroying the valid output generated up to the failure point. Shadowing/blocking previously called Definitions within a single branch should also be explored.
+

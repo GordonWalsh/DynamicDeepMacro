@@ -1,5 +1,88 @@
 # Lexer Specification
 
+This document defines the lexical analysis subsystem: the character-by-character processing pipeline that converts raw input strings into List, segmented into sub-Lists, of zero-depth semantic Tokens.
+
+## 1. System Overview
+
+The Lexer operates strictly under the Breadth-Eager, Depth-Lazy paradigm. It is entirely blind to text transformation logic and random seed generation; its sole responsibility is to identify top-level structural boundaries and Segment split markers, then slice the input text into labelled chunks.
+
+To bypass the catastrophic performance penalties of Python string buffering, the Lexer utilizes an **Interval-Tracking Speculative Architecture**, ensuring $O(N)$ linear time complexity in a single string sweep, followed by lightweight array culling.
+
+## 2. Input & Output Signatures
+
+**Input:**
+1. A raw text string.
+2. `is_invocation_payload` (Boolean, default `False`): A flag indicating the text is the isolated interior of an Invocation token.
+
+**Output:** `List[List[Token]]`
+- The Lexer _always_ returns a list of Segments (which are themselves lists of Tokens). If no valid Segment dividers (`|`) exist, it simply returns a single-item outer list containing the lexed Tokens (e.g., `[[Token_1, Token_2]]`).
+
+## 3. Core Lexing Architecture
+
+### 3.1 The FSM Strategy & Index Optimization
+
+Instead of slicing and buffering strings character-by-character, the Lexer runs a single pass over the text using a Finite State Machine (FSM) approach. It tracks structural edges (opens/closes) in pre-sorted integer arrays (bins) for each boundary pair/type (i.e., per output Token Type).
+
+- **The Negative Trick:** To avoid the overhead of instantiating tuple objects (e.g., `(5, 'open')`), the Lexer uses signed integers within a single array. Positive integers represent opening boundaries, and negative integers represent closing boundaries.
+- **0-Based Indexing:** Standard 0-based indexing is preserved. An opening marker at the first character is `0`. A theoretical closing marker at index `0` would be immediately discarded by the stack logic as "unmatched" before ever being recorded, meaning a mathematically ambiguous `-0` state never enters the candidate arrays.
+    - If later engine features implicate zero-length Tokens, this concept may have to be revisited, but the rule of a Token always corresponding to at least one input character is currently absolute.
+- **Half-Open Intervals:** All matched boundaries and discrete markers resolve to half-open intervals: `[start, end)`.
+- This natively maps to Python's C-backed slicing (e.g., `text[start:end]`), eliminating the need for `+1` mathematical offsets during the payload generation loop.
+    - Note that per the above **Negative Trick**, the negative `end` indices are taken as their absolute values, not a count-from-end index.
+- **Discrete Tokens:** Zero-depth discrete tokens like the Segment divider (`|`) are recorded as 1-long half-open intervals. For example, a pipe at index `5` is recorded as `[5, 6]`.
+
+### 3.2 Invocation-Mode Subsystem Rules
+
+When `is_invocation_payload=True`, the Lexer applies these internal state shifts:
+
+1. **Priority Inversion:** The Rigidity Hierarchy (Section 4) swaps the priority of Segments (`|`) and standard (EOL/`|` terminated) Definitions to preserve Segment divisions in Invocation Payloads.
+2. **Argument Token Emission:** If a segment-leading colon `:` fails to form a complete Definition interval, the orphaned syntax is emitted as `TokenType.ARGUMENT` rather than degrading to `TokenType.TEXT`.
+3. **Definition Boundary Character:** The character preceding the start or at the end of a Definition (in addition to start/end of input), `def_boundary`, is changed from `\n` in Standard Mode to `|` in Invocation Mode.
+
+### 3.3 Modifier Extraction
+
+Modifiers (`$$`) are extracted from the boundaries of valid Segments in _both_ modes. The Lexer scans from the start of each resolved segment up to the last `$$` marker, stripping it from the payload and emitting it as a Modifier Token. Interpretation of multiple modifiers is deferred to the Parser.
+
+## 4. The Rigidity Hierarchy & Interval Culling
+
+TODO: Validate the following WRT structural hierarchy.
+
+To inherently protect nested syntax and isolate user typos (unbalanced brackets), the Lexer applies a **Deferred-Priority, Zero-Depth Culling Algorithm**. Candidate intervals are evaluated against each other based first on strict structural hierarchy, then with a set priority order to resolve nesting conflicts. A candidate interval that falls strictly within another candidate interval will be consumed as raw text contents of the outer interval. If a softer boundary falls strictly inside a harder boundary, the softer boundary is destroyed (treated as raw text).
+
+Crucially, the relationship between Segments (`|`) and standard (i.e. EOL) Definitions (`: \n`) changes fundamentally depending on the Payload context. The `is_invocation_payload` flag dynamically swaps their priority. In standard text, Definitions naturally consume Segments to allow for multi-option values (e.g., `:Key:A|B\n`). Therefore, EOL Definitions are harder than Segments. Inside an Invocation, Segments act as hard dividing walls for Keys, Definitions, and Arguments. A Definition cannot bleed across options (e.g., `<Macro|:Key:A|B>` is a Key, Definition, and Argument, not a Key and Multi-Option Definition). Therefore, Segments are harder than standard (non Multi-Line) Definitions.
+
+The hierarchy, from hardest to softest, for **standard text** is:
+
+1. **Multi-Line Definitions (`: :<< >>`)**
+    - Consumes everything, including newlines.
+2. **Scopes (`{ }`)**
+3. **Invocations (`< >`)**
+4. **Standard EOL Definitions (`: : \n`)**
+    - Encompasses both Lazy and Eager Definitions, which will be divided later. Terminates at the end of the line. Safely encapsulates any `|` characters within its bounds.
+5. **Segments (`|`)**
+    - Divides text into Segments if outside a Definition, Scope, or Invocation.
+6. **Priority 6: Modifiers (`$$`)**
+
+For **Invocation Payloads (`is_invocation_payload = True`)**, the order is:
+
+1. **Multi-Line Definitions (`: :<< >>`)**
+2. **Scopes (`{ }`)**
+3. **Invocations (`< >`)**
+4. **Segments (`|`)**
+    - Above standard Definitions, not consumed by them.
+5. **Standard Definitions and Arguments (`: |`)**
+6. **Priority 6: Modifiers (`$$`)**
+
+## 5. Token Generation
+
+After the culling process finalizes the array of top-level intervals:
+1. The Lexer iterates over the intervals.
+2. Literal text between intervals is captured as `TokenType.TEXT`.
+3. The bounded intervals are mapped to their respective `TokenType` enums (e.g., `INVOCATION`, `SCOPE`, `DEFINITION`).
+4. The final flat list of Tokens is split along any `TokenType.SPLIT` (`|`) tokens, assembling the final `List[List[Token]]` to be returned to the Parser.
+
+## OLD Lexer Specification
+
 This document defines the lexical analysis subsystem: the character-by-character processing pipeline that converts raw input strings into a flat, zero-depth `Token` list.
 
 ## 1\. System Overview
@@ -16,23 +99,57 @@ To bypass the catastrophic performance penalties of Python string buffering, the
 
 ---
 
-## 2\. Core Lexing Architecture
+## 2. Core Lexing Architecture
 
-### 2.1 Interval-Tracking & Pushdown Automata
+TODO still needs updating from LLM.
 
-Instead of slicing and buffering strings character-by-character, the Lexer runs a single pass over the text.
+To support Order-Independent Evaluation and Graceful Degradation without the catastrophic backtracking penalties of Context-Free Grammars, the Lexer utilizes a **Priority-Stratified Pass Resolution** algorithm. It functions as a pure, stateless string processor, optionally accepting an `is_invocation` flag to activate Segment-aware boundary rules.
 
-- It uses independent pushdown automata (stacks) for each configured boundary type (e.g., `<` and `>`).
-- When an opening marker is found, its integer index is pushed.
-- When a closing marker is found, the stack pops and the `(start_index, end_index)` pair is registered as a "Candidate Interval".
-- Discrete markers (like `|` or `$$`) are registered instantly at their integer index without needing a closing pair.
+The lexing pipeline is broken into four distinct computational phases:
 
-### 2.2 Zero-Depth Interval Culling
+### Phase 1: The O(N) Structural Sweep (Blind Discovery)
 
-To inherently protect nested syntax and isolate user typos (unbalanced brackets), the Lexer applies a culling algorithm at the end of the pass.
+The Lexer does not attempt to pair boundaries during its initial string traversal. Instead, it performs a single, rapid sweep of the text, looking strictly for configured structural characters (`<`, `>`, `{`, `}`, `:`, `|`, `\n`).
 
-- **The Rule:** If a registered token boundary (e.g., `{ }` or `|`) falls strictly within the index bounds of a higher-order boundary (e.g., `< >`), the inner marker is neutralized.
-- **The Result:** The Lexer only emits zero-depth tokens. The internal contents of macros and groups remain untouched, flat strings.
+- **Inline Escapes:** If a structural character is immediately preceded by a backslash (e.g., `\|`), the Lexer ignores it. It does not record the index, leaving the literal `\|` sequence in the text payload for downstream unescaping.
+- **The Linked List:** Valid structural hits are recorded into a Doubly-Linked List of `Edge` objects, storing their character type and original integer index.
+
+### Phase 2: Priority-Stratified Resolution (The Rigidity Hierarchy)
+
+Instead of processing the Edge list linearly from left-to-right, the Lexer traverses the list multiple times, resolving pairs based on a strict "Rigidity Hierarchy" (Hardest boundaries to Softest boundaries). For each pass, only the highest-level matched pairs of that type are recorded.
+
+1. Scopes `{ }`
+2. Invocations `< >`
+3. Multi-Line Definitions `<< >>`
+4. EOL Definitions `: \n`
+5. Segments `|`
+
+_If `is_invocation=True`, then the order of EOL Definitions and Segments is swapped, so `|` will break up a Definition._
+
+**The Gap-Jumping Subsumption Rule (Zero-Depth Culling):**
+When a pass successfully pairs an opening and closing marker, it updates the pointers of the Linked List to "jump" the gap between them.
+
+- _Example:_ If Priority 1 pairs `{` at index 5 and `}` at index 20, the node before index 5 is linked directly to the node after index 20.
+- _Result:_ Any structural hits trapped inside `[5, 20]` are instantly orphaned in memory. They become physically invisible to all subsequent, lower-priority passes, natively enforcing the Depth-Lazy axiom.
+
+**The Newline Stack Wiper:**
+Scopes and Invocations are explicitly forbidden from natively spanning newlines. During Pass 1 and Pass 3, if the traversal encounters a `\n` hit, it instantly empties its active "looking for a close" stack. Unmatched open markers fall back to literal text.
+
+### Phase 3: Slicing and Tokenization
+
+Once all Priority Passes are complete, the surviving, fully-paired intervals in the Linked List represent the true, zero-depth structural boundaries of the string.
+The Lexer iterates through these final intervals and the original string to emit Tokens:
+
+- **Bounded Syntax:** The string slice _inside_ a matched interval is captured (including its markers) and cast to the appropriate Token (`TokenType.INVOCATION`, `TokenType.SCOPE`, `TokenType.DEFINITION`).
+- **Raw Interstitial Text:** Any string indices falling _between_ the matched zero-depth intervals are sliced out and cast to `TokenType.TEXT`.
+- **Degradation:** Any structural hits that failed to pair (e.g., an orphaned `<` or `:`) naturally fall into the interstitial gaps and are gracefully absorbed into `TokenType.TEXT`.
+
+### Phase 4: Segment Routing
+
+Because the fundamental relationship between `|` and Definitions changes depending on context, the Lexer dynamically routes the final Tokens:
+
+- **Standard Text (`is_invocation=False`):** The `|` character is treated as meaningless text. The Lexer returns a single `List[Token]`.
+- **Invocation Payloads (`is_invocation=True`):** The `|` character acts as a hard boundary (Priority 4). It physically severs the linked list into sublists, preventing Priority 5 (EOL Definitions) from bleeding across options. The Lexer slices the original string at these `|` intervals and returns a `List[List[Token]]`, representing a cleanly separated array of Segments ready for the AST.
 
 ---
 
