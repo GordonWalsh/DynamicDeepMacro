@@ -5,32 +5,37 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 class TokenType(Enum):
-    SCOPE = auto()      # Raw Text wrapped ({ }) for deferred Evaluation
-    SPLIT = auto()      # Zero-depth Segment dividers (|)
-    MODIFIER = auto()   # Math/Quantity rules (2$$)
-    QUASI_TEXT = auto() # Text content of unknown variety
-    RAW = auto()        # Raw Text containing no other syntax
-    LITERAL = auto()    # Text that is already, or will not be, Evaluated and is now inert
-    REGEX = auto()      # Text that is intended to be used as a regex pattern/substitution for matching during evaluation
-    QUASI_INVOCATION = auto() # Context Stack lookup wrappers (< >)
+    # SYNTAXOID? TOKENOID? Not sure if we need those root or pre-buckets.
+    SPLIT = auto()                  # Zero-depth Segment dividers (|)
+    MODIFIER = auto()               # Math/Quantity rules (2$$)
+    SCOPE = auto()                  # Raw Text wrapped ({ }) for deferred Evaluation
+    
+    TEXTOID = auto()                # Text content of unknown variety
+    RAW = auto()                    # Raw Text unprocessed by the engine. TODO: Not sure if there is a distinct type for may-contain-syntax vs clean-of-syntax but subject to other modification that could induce syntax later?
+    LITERAL = auto()                # Text that is already, or will not be, Evaluated and is now inert
+    REGEX = auto()                  # Text that is intended to be used as a regex pattern/substitution for matching during evaluation
+    
+    INVOCATIONOID = auto()          # <>-wrapped text of any type, various Invocations or Escape Block
     INVOCATION_SCOPED = auto()
     INVOCATION_UNSCOPED = auto()
-    INVOCATION_POSITIONAL = auto() # Positional argument references (e.g. <1>, <2>, etc.)
-    ESCAPE = auto()     # Escape Block (</.../>) content in its escaped (ASCII) form
-    QUASI_DEF = auto()  # Placeholder for Definitions and Arguments pre-classification TBD?
+    INVOCATION_POSITIONAL = auto()  # Positional argument references (e.g. <1>, <2>, etc.)
+    ESCAPE = auto()                 # Escape Block (</.../>) content in its escaped (ASCII) form
+    
+    DEFINITIONOID = auto()          # Placeholder for Definitions and Arguments pre-classification
     DEFINITION_EAGER = auto()
     DEFINITION_LAZY = auto()
     ARGUMENT_EAGER = auto()
     ARGUMENT_LAZY = auto()
+    # TODO Verify that there is nothing special needed for multi-line Definitions
 
 @dataclass(slots=True)
 class Token:
     """Represents a classified piece of text content. Saved as indices of a reference string for performance. May be used as a 'virtual string' in contexts outside of lexing output."""
     type: TokenType
     root_string: str    # Reference to the original string the Token indices are for
-    start: int
-    end: int
-    separator_idx: Optional[int] = None # For Definitions Kay-Value Separator. TODO maybe rename extra_idx?
+    start: int          # Inclusive first-character index WRT the root string
+    end: int            # Exclusive ending point WRT the root string
+    separator_idx: Optional[int] = None # For Definitions Kay-Value Separator. TODO maybe rename to extra_idx?
 
     # TODO Copied in from suggestion, merge with `payload`?
     def __str__(self):
@@ -82,27 +87,6 @@ class Token:
                 else:   # Different root string but still may be identical content
                     return self.payload == other.payload
         return False
-    
-
-#  Old version (<2026-05-08) for temp reference 
-"""
-@dataclass
-class Token:
-    
-    Represents a lexed token: either a bounded token or a literal text span.
-    
-    Attributes:
-        start_idx (int): Index of opening marker (or start of literal) in original text
-        end_idx (int): Index of closing marker (or end of literal) in original text
-        type_markers (Tuple[str,str, str]): (Token type, start_marker, end_marker) tuple
-                                       ('', '') for literal text spans
-        text (str): Complete token text (with markers for bounded tokens, plain text for literals)
-    
-    position: int
-    length: int
-    token_type: TokenType
-    content: str
-"""  
  
 class DefClass(Enum):
     BOUNDED = auto()
