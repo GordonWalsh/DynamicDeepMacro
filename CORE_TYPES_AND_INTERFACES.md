@@ -4,7 +4,7 @@ This document defines the shared data structures and contracts between the proce
 
 ## Overview
 
-The macro engine processes text through a lazy, recursive lifecycle, roughly:
+The macro engine processes text through a lazy, recursive lifecycle, roughly (TODO: not up to date with the conversion/flattening/serialization paradigm shift):
 
 ```text
 String Input
@@ -22,7 +22,7 @@ This document specifies the data structures passed between stages and the invari
 
 ## Token Class (Lexer -> Parser interface)
 
-TODO Out of date, maybe just delete and reference another source?
+TODO Whole Token section is out of date, maybe just delete and reference another source?
 **Purpose:** Represents an atomic unit identified by the character-by-character pushdown automaton.
 
 ### Token Fields
@@ -70,9 +70,10 @@ Definitions consist of a 4D orthogonal syntax matrix, detailed in `ARCHITECTURE_
     - `'RIGHT'`: Appended to the base/match.
 - `key_is_regex` (bool): Key used `/ /` delimiters.
 - `value_is_regex` (bool): Value used `/ /` delimiters.
-- `key` (str): Pattern or identifier to match (delimiters stripped).
-- `value` (str): Replacement text or format string (delimiters stripped).
-  Both Strength and Timing are instructions to the Parser, not part of the state information of the Definition, so they are not saved as fields.
+- `key` (Token): Pattern or identifier to match (delimiters stripped).
+- `value` (Token): Replacement text or format string (delimiters stripped).
+    - ~~TODO: the Value should maybe be a Token instead, which~~ The key and value Tokens can be Raw Text from the original location if Lazy or a new Literal Token if it was Eagerly Evaluated.
+- Both Strength and Timing are instructions to the Parser, not part of the state information of the Definition, so they are not saved as fields.
 
 ### Definition Invariants
 
@@ -92,13 +93,13 @@ TODO: Many of these descriptions are out of date or replicated elsewhere.
 TODO Shift to Token/"virtual string" contents instead of actual strings
 `ASTNode` superclass contains some generic fields and functions common to all Node types:
 
-- `raw_text` (str): Original text payload before evaluation.
+- `token` (Token): Original text payload before evaluation, in the form of the `Token` used to create the Node.
 - TODO: other shared fields and functions
     - TBD: Maybe has a generic `process()` to trigger internal logic that has varying output, maybe optional implementation of `expand()` and/or `execute()`?
 
 ### Node Subclasses
 
-Each Node subclass represents a specific type of user input and has its own specific internal logic, generally built as a subset of a common overall processing pipeline.
+Each Node subclass represents a specific type of user input and has its own specific internal logic, generally built as a subset of a common overall processing pipeline. TODO this list may be incomplete.
 
 - `TextNode`: Contains Raw text.
     - TODO could also contain Literal Token or child Nodes with Evaluated Literal Tokens
@@ -106,11 +107,11 @@ Each Node subclass represents a specific type of user input and has its own spec
 - `UnscopedInvocationNode`: Contains `|`-Split Segments, each an optional `Modifier`. Key-String Segments are Evaluated preceding Context Stack lookup, with the Parsed Definitions and Nodes returned to the Parent.
 - `ScopedInvocationNode`: Contains `|`-Split Segments, each an optional `Modifier`. Key-String Segments are Evaluated preceding Context Stack lookup, with the resulting Raw Texts subsequently Evaluated and returned as Literal Text.
 - `PositionalNode`: Single `<>`-bounded digit used to reference the Segments of the Parent Invocation rather than the Library of explicit Definitions.
-- `EscapeNode`: Contains already-Evaluated or other Literal text not intended to go through the full engine process. Processes Unicode escape sequences as well.
+- `EscapeNode`: Contains already-Evaluated or other Literal text not intended to go through the full engine process. Processes Unicode escape sequences as well. TODO might be part of `TextNode` with a TokenType of `ESCAPE`?
 
 ### Node Invariants
 
-- Inner boundaries in the content strings of Nodes are stored as raw strings; they are not parsed into child trees on creation.
+- Inner boundaries in the Payloads of Nodes remain as inert text on creation; they are not interpreted as Child structures/objects until the Node triggers processing of its Payload.
 
 ## Context Class
 
@@ -137,8 +138,9 @@ What the Lexer guarantees:
 
 1. **No Lookahead Ambiguity:** Processing relies strictly on stateful index tracking, never complex regex lookaheads.
 2. **Lossless Reconstruction:** Tokens correspond 1:1 with the input. Concatenating the raw text fields of the output tokens will result in an exact, byte-for-byte duplicate of the input string.
+    - Not sure if this should be a strong rule. Also, needs to be updated for the new "string-view" `Token`s.
 3. **Lazy Isolation:** All—and only—top-level (zero-depth) syntax markers are identified as discrete or bounded tokens. Everything else is guaranteed to be a TEXT token.
-4. **Data Offloading:** The Lexer outputs strongly typed, clean Token objects. It does not attempt to parse definitions into key/value pairs, instantiate AST Nodes, differentiate Invocation variants, or interpret modifiers.
+4. **Data Offloading:** The Lexer outputs strongly typed, clean Token objects. It only detects the geometry of the input text, it's doesn't interpret meaning or set up any further structure.
 5. TODO Something about Invocation-mode flag for changing Definition-Split priority interaction.
 
 ### Parser Contract
@@ -164,6 +166,7 @@ What the Parser guarantees:
 ### Other Functions
 
 - Serializer that takes in a List of (assumed to be) Evaluated (Text)Nodes and `"".join()`s their `Token`'s Payloads into a single string.
+    - There is also a need for a very similar function that would take in Tokens and produce a single string, but I think it would produce Raw Text, not Literal?
 - Definition Token handler: Described in `DEFINITIION_LIBRARY_SPECIFICATION.md`; alternate "Parser" for Definition-type `Token`s that applies them to a target DefLibrary and triggers eager Evaluation if needed.
 
 ---

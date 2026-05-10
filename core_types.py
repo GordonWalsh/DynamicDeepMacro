@@ -5,12 +5,18 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 class TokenType(Enum):
-    TEXT = auto()       # Raw Text containing no other syntax
-    LITERAL = auto()    # Text that is already, or will not be, Evaluated and is now inert
     SCOPE = auto()      # Raw Text wrapped ({ }) for deferred Evaluation
-    INVOCATION = auto() # Context Stack lookup wrappers (< >)
     SPLIT = auto()      # Zero-depth Segment dividers (|)
     MODIFIER = auto()   # Math/Quantity rules (2$$)
+    QUASI_TEXT = auto() # Text content of unknown variety
+    RAW = auto()        # Raw Text containing no other syntax
+    LITERAL = auto()    # Text that is already, or will not be, Evaluated and is now inert
+    REGEX = auto()      # Text that is intended to be used as a regex pattern/substitution for matching during evaluation
+    QUASI_INVOCATION = auto() # Context Stack lookup wrappers (< >)
+    INVOCATION_SCOPED = auto()
+    INVOCATION_UNSCOPED = auto()
+    INVOCATION_POSITIONAL = auto() # Positional argument references (e.g. <1>, <2>, etc.)
+    ESCAPE = auto()     # Escape Block (</.../>) content in its escaped (ASCII) form
     QUASI_DEF = auto()  # Placeholder for Definitions and Arguments pre-classification TBD?
     DEFINITION_EAGER = auto()
     DEFINITION_LAZY = auto()
@@ -98,17 +104,27 @@ class Token:
     content: str
 """  
  
+class DefClass(Enum):
+    BOUNDED = auto()
+    PRE_PATTERN = auto()
+    POST_PATTERN = auto()
+
+class DefPosition(Enum):
+    BASE = auto()
+    LEFT = auto()
+    RIGHT = auto()
+
 # TODO Update Definition for new changes and add DefLibrary stuff.
 @dataclass
 class Definition:
     """Represents a single Key -> Value Definition with necessary metadata"""
     # TODO Replace str fields with true Enums
-    pattern_class: str  # 'PRE', 'BOUNDED', 'POST'
-    strength: str       # 'STRONG', 'WEAK'
-    key_is_regex: bool
-    value_is_regex: bool
-    key: str
-    value: str
+    pattern_class: DefClass  # 'PRE_PATTERN', 'BOUNDED', 'POST_PATTERN'
+    position: DefPosition       # 'BASE', 'LEFT', 'RIGHT'
+    key: Token
+    value: Token
+
+    
 
 
 class DefLibrary:

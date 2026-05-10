@@ -41,9 +41,10 @@ Unlike Bounded Macros (which have a single explicit Key-String per Invocation), 
 
 ### Definition Token Handler
 
-Rough pseudocode for how the Definition Token handler would work:
+Rough pseudocode for how the Definition Token handler would work (TODO should move elsewhere?):
 
 ```python
+# TODO key and value are Tokens now, with the TokenType replacing the is_regex flags. 
 def process_definition_token(token, target_library, context=None):
     # 1. Universal Extraction (Shared Lazy + Eager)
     pattern_class, direction, is_strong, key, key_is_regex, value, value_is_regex  = extract_syntax_features(token)
@@ -85,8 +86,8 @@ To optimize lookup speeds and completely eliminate type-checking during resoluti
 **Trap Avoided:** _Context Stack managing string buffers or sorting logic._
 
 - **The Solution:** Combined Value building happens automatically in the Definition Resolution process with dedicated syntax.
-- When a key is requested, the stack searches **Left-to-Right (Head-to-Tail / Strongest-to-Weakest)**.
-- It accumulates any Left-Concat (`<:`/`<::`) or Right-Concat (`>:`/`>::`) Definitions it finds.
+- When a key is requested, the (conceptual model of, built as an iterator over two Lists,) stack searches **Left-to-Right (Head-to-Tail / Strongest-to-Weakest)**.
+- It accumulates any Left-Concat (`<:`/`<::`) or Right-Concat (`>:`/`>::`) Definitions it finds. (maybe start with a placeholder base in a deque and append these values, then replace the placeholder when the actual Base when found? Or keep two Lists/stacks for the Concat Definitions, then construct the final container from those and the Base when it terminates?)
 - The exact moment it hits a Base definition (`:` or `::`), the search **terminates**, yielding the final ordered list. This natively resolves the need for recursive Definitions while allowing infinite, scoped list extensions.
 - Because the first concat-Definitions encountered are those that end up closest to the Base Definition, the Context Stack does **not** need to sort these Definitions or manage left/right string buffers. This naturally builds the string from the **Inside-Out**, perfectly guaranteeing that Local Scope wraps tighter than Global Scope without any complex tracking overhead.
 
