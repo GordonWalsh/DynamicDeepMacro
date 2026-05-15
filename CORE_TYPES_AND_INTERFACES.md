@@ -22,28 +22,15 @@ This document specifies the data structures passed between stages and the invari
 
 ## Token Class (Lexer -> Parser interface)
 
-TODO Whole Token section is out of date, maybe just delete and reference another source?
 **Purpose:** Represents an atomic unit identified by the character-by-character pushdown automaton.
 
 ### Token Fields
 
-- ~~`content` (str): Unprocessed token content (includes internal boundary markers if applicable).~~
-- `position` (int): Character offset of the start marker in the input string. TBD: maybe delete if unused?
-- `length` (int): Number of characters consumed. TBD: maybe delete if unused?
-- `token_type` (`TokenType` Enum) is one of:
-    - `'TEXT'`: Basic plain text; no internal parsing required. Local Pre-Patterns still apply.
-    - `'LAZY_DEF'` and `'EAGER_DEF'`: Defines a key/pattern to a replacement value, starting `:` and `::` respectively.
-        - Formerly `'DEFINITION'`
-    - `'ARGUMENT'`: If in invocation mode, a leading-`:` Segment string without Definition syntax.
-    - `'INVOCATION'`: A bounded token (`<...>`) intended to be Resolved against Definitions. The Lexer does not identify Positional Invocations vs normal, nor Scoped vs Unscoped. That must be handled by the Parser. All variations will simply produce base INVOCATION Tokens.
-        - Escape Block syntax (`</.../>`) will also become an `INVOCATION` Token, but will later be identified by the Parser.
-    - `'SCOPE'`: A bounded substring (`{...}`) intended to trigger PRNG Option Selection or isolate the contents.
-    - `'SPLIT'`: A zero-depth divider (`|`) separating PRNG options.
-    - `'MODIFIER'`: Math/Quantity rules (e.g., `2$$`) prepended to Invocation Segments or `|`-divided Raw Text Scope Node Payloads.
+See [core_types.py](core_types.py)
 
 ### Token Invariants
 
-- `SPLIT` and `MODIFIER` tokens are only identified at the current lexical depth (zero-depth relative to the parent string). Nested markers remain inert text.
+- Tokens are only identified at the current lexical depth (zero-depth relative to the parent string). Nested markers remain inert text.
 - Escape characters preceding genericized syntax markers are passed through to the Parser.
 - TODO Later: The Lexer identifies token types dynamically based on a global `SyntaxConfig` object.
 
