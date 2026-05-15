@@ -21,7 +21,7 @@ from core_types import Token, TokenType
 
 # MVP structural constants (to be replaced by dynamic SyntaxConfig later)
 SYNTAX_CHARACTERS = r'\\:/<>{}\|'
-priority = dict({TokenType.DEFINITION: 4, TokenType.SCOPE: 3, TokenType.INVOCATION: 2, TokenType.TEXT: -1})
+priority = dict({TokenType.DEFINITIONOID: 4, TokenType.SCOPE: 3, TokenType.INVOCATIONOID: 2, TokenType.TEXTOID: -1})
 
 def lex(text: str) -> List[Token]:
     """
@@ -58,7 +58,7 @@ def lex(text: str) -> List[Token]:
                 end_idx = i + 1
                 if end_idx + 1 < n and text[end_idx + 1] == '\n':
                     end_idx += 1 # Capture trailing newline
-                candidates.append((def_start_idx, end_idx, TokenType.DEFINITION))
+                candidates.append((def_start_idx, end_idx, TokenType.DEFINITIONOID))
                 i += 1  # Skip second >
                 continue
 
@@ -67,7 +67,7 @@ def lex(text: str) -> List[Token]:
         elif char == '>':
             if invocations:
                 start = invocations.pop()
-                candidates.append((start, i, TokenType.INVOCATION))
+                candidates.append((start, i, TokenType.INVOCATIONOID))
         elif char == '{':
             groups.append(i)
         elif char == '}':
@@ -90,7 +90,7 @@ def lex(text: str) -> List[Token]:
             # Look for a not odd number of slashes then a ':' or '::' (g1), maybe a '<<' (g2), then to end of line/string
             header_match = re.compile(r'[^:\n]*?(?<!\\)(?:(?:\\\\))*(:{1,2})(<<)?[^\n]*(?:\n|$)').match(text, pos = i+1) # Start matching on next character
             if header_match: # Found a match, ie a middle :/::
-                candidates.append((i, header_match.end()-1, TokenType.DEFINITION)) # Register an EOL candidate regardless in case the block fails to close
+                candidates.append((i, header_match.end()-1, TokenType.DEFINITIONOID)) # Register an EOL candidate regardless in case the block fails to close
                 if header_match.group(2): # Found a block open marker <<
                     def_blocks.append(i) # Entering/adding to block definition mode
                     i=header_match.end(2) # Jump to the end of the block marker
@@ -159,7 +159,7 @@ def lex(text: str) -> List[Token]:
                 content=text[last_idx:start], 
                 position=last_idx, 
                 length=start - last_idx, 
-                token_type=TokenType.TEXT
+                token_type=TokenType.RAW
             ))
         
         # Capture the bounded token
@@ -177,7 +177,7 @@ def lex(text: str) -> List[Token]:
             content=text[last_idx:n], 
             position=last_idx, 
             length=n - last_idx, 
-            token_type=TokenType.TEXT
+            token_type=TokenType.RAW
         ))
         
     return tokens
@@ -274,7 +274,7 @@ def _build_result(text: str, boundaries: List[Tuple[str, str]],
         token = Token(
             position=start_idx,
             length=end_idx - start_idx,
-            token_type=TokenType.INVOCATION if boundaries[type_id] == ('<', '>') else TokenType.SCOPE,
+            token_type=TokenType.INVOCATIONOID if boundaries[type_id] == ('<', '>') else TokenType.SCOPE,
             content=token_text
         )
         result.append(token)

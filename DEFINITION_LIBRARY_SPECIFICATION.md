@@ -41,54 +41,11 @@ Unlike Bounded Macros (which have a single explicit Key-String per Invocation), 
 
 ### Definition Token Handler
 
-Rough pseudocode for how the Definition Token handler would work (TODO should move elsewhere?):
-
-```python
-# TODO key and value are Tokens now, with the TokenType replacing the is_regex flags.
-def process_definition_token(token, target_library, context=None):
-    # 1. Universal Extraction (Shared Lazy + Eager)
-    pattern_class, direction, is_strong, key, key_is_regex, value, value_is_regex  = extract_syntax_features(token)
-
-    # 2. The Eager Intercept (The only difference)
-    if token.type == TokenType.DEF_EAGER:
-        if not context:
-            raise CompilerError("Eager definitions require an active Context.")
-        literal_val = context.evaluate(raw_value)
-        raw_value = f"</{escape_hex(literal_val)}/>"
-
-    # 3. Universal Object Creation
-    def_obj = Definition(pattern_class, direction, key, key_is_regex, value, value_is_regex)
-
-    # 4. Universal Routing
-    if is_strong:
-        target_library.push_strong(def_obj)
-    else:
-        target_library.push_weak(def_obj)
-```
+Moved to `parser.py`
 
 ### Individual Definition Resolving
 
-```Python
-class Definition:
-    # ... slots and init ...
-
-    def resolve_against(self, target_key: Token) -> Token | None:
-        if self.key.type == TokenType.RAW:
-            if self.key.payload == target_key.payload: # I might have already implemented this in Token.__eq__?
-                return self.value_token
-            return None
-
-        elif self.key.type == TokenType.REGEX:
-            match = re.match(self.key.payload, target_key.payload)
-            if match:
-                # If there's a match, we can process \g<1> substitutions here
-                # and return a newly minted LITERAL token with the formatted string.
-                return self._generate_regex_literal(match)
-            return None
-
-        else:
-            raise ValueError(f"Invalid self.key.type: {self.key.type}")
-```
+Code in `core_types.py`, reference that.
 
 ## Library
 

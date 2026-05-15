@@ -1,5 +1,6 @@
 import itertools
-from typing import Tuple, Dict, Optional, List
+import re
+from typing import Tuple, Dict, Optional, List, Type
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -28,7 +29,7 @@ class TokenType(Enum):
     ARGUMENT_LAZY = auto()
     # TODO Verify that there is nothing special needed for multi-line Definitions
 
-@dataclass(slots=True)
+@dataclass(slots=True) # FIXME: recommended to have frozen=true, but not sure if it is necessary
 class Token:
     """Represents a classified piece of text content. Saved as indices of a reference string for performance. May be used as a 'virtual string' in contexts outside of lexing output."""
     type: TokenType
@@ -36,14 +37,68 @@ class Token:
     start: int          # Inclusive first-character index WRT the root string
     end: int            # Exclusive ending point WRT the root string
     separator_idx: Optional[int] = None # For Definitions Kay-Value Separator. TODO maybe rename to extra_idx?
-
+    
     # TODO Copied in from suggestion, merge with `payload`?
     def __str__(self):
-        # Only creates the actual string when explicitly cast/printed
+        # Currently just the root string's slice, but might change in the future.
         return self.root_string[self.start:self.end]
     
     def __len__(self):
         return self.end - self.start
+    
+    def __getitem__(self, key):
+        length = self.end - self.start
+        if type(key) is int:
+            # 1. Handle negative wrapping
+            if key < 0:
+                key += length
+            # 2. Boundary check: Prevent access outside the window
+            if key < 0 or key >= length:
+                raise IndexError("index out of range")
+            # 3. Return character from base string at shifted offset
+            return self.root_string[self.start + key]
+
+        if type(key) is slice:
+            # slice.indices(n) returns (start, stop, stride) adjusted for length n
+            start, stop, step = key.indices(length)
+            
+            if step is None or step == 1:
+                # Return a new View with re-calculated absolute boundaries
+                return self.__class__(
+                    root_string=self.root_string,
+                    start=self.start + start,
+                    end=self.start + stop,
+                    type=self.type,
+                    separator_idx = self.separator_idx # NOTE: Doesn't move relative to the base string. May be outside new bounds, but was valid relative to the original bounds, so keep regardless.
+            )
+            else:
+                # Slicing with a stride forces a copy in Python strings.
+                # return self.base_string[self.start + start : self.start + stop : step]
+                raise ValueError("Only contiguous slices (step=1) are supported")
+        raise TypeError(f"Invalid index type: {type(key)}")
+
+    def __iter__(self):
+        # This returns the iterator of the substring
+        return iter(self.root_string[self.start:self.end])
+    
+    def __eq__(self, other):
+        """
+        Compare tokens based on text and marker_type only.
+        
+        This allows test assertions to ignore start/end indices, which are
+        metadata for internal tracking with the deferred slicing for performance
+        rather than semantic reasons, and compare with the actual semantics.
+        """
+        if isinstance(other, Token):
+            if (self.type == other.type):
+                if (other.root_string is self.root_string):
+                    # TODO not sure if this is enough to handle Definition Tokens safely
+                    return (other.start == self.start and other.end == self.end and other.separator_idx == self.separator_idx)
+                else:   # Different root string but still may be identical content
+                    return self.payload == other.payload # Could do with memoryviews?
+        elif isinstance(other, str):
+            return self.payload == other # Should this also check for a Textoid Type or subType?
+        return False
     
     @property
     def payload(self) -> str:
@@ -66,27 +121,11 @@ class Token:
         return self.root_string[self.separator_idx + 1 : self.end]
     
     @property
-    def is_def_type(self) -> bool:
+    def is_def_type(self) -> bool: # TODO is this needed and/or should it check separator is not None/is valid?
         """Checks if a Token is a Definition type that has a spearator_idx"""
         return self.type == TokenType.DEFINITION_EAGER or self.type == TokenType.DEFINITION_LAZY
 
-    def __eq__(self, other):
-        """
-        Compare tokens based on text and marker_type only.
-        
-        This allows test assertions to ignore start/end indices, which are
-        metadata for internal tracking with the deferred slicing for performance
-        rather than semantic reasons, and compare with the actual semantics.
-        """
-        if isinstance(other, Token):
-            if (self.token_type == other.token_type):
-                if (other.root_string is self.root_string):
-                    # TODO not sure if this is enough to handle Definition Tokens safely
-                    return (other.start == self.start and other.end == self.end and other.separator_idx == self.separator_idx)
-                
-                else:   # Different root string but still may be identical content
-                    return self.payload == other.payload
-        return False
+
  
 class DefClass(Enum):
     BOUNDED = auto()
@@ -102,15 +141,33 @@ class DefPosition(Enum):
 @dataclass
 class Definition:
     """Represents a single Key -> Value Definition with necessary metadata"""
-    # TODO Replace str fields with true Enums
     pattern_class: DefClass  # 'PRE_PATTERN', 'BOUNDED', 'POST_PATTERN'
     position: DefPosition       # 'BASE', 'LEFT', 'RIGHT'
     key: Token
     value: Token
+    compiled_pattern: Optional[re.Pattern] = None
 
-    
-
-
+    def resolve(self, target: Token) -> Token | None:
+        """Compares the target Key Token to the Definition's key using the appropriate matching logic, returning the (possibly Regexed) Payload Value Token if there is a match and None if there iis no match"""
+        if self.key.type != TokenType.REGEX: # NOTE: Assuming all non-Regex Tokens that might end up in a Definition's Key are just textoids with the text content as their payload.
+            if self.key == target.payload:
+                return self.value   # NOTE Definition syntax having non-Regex Keys with Regex Values must be pre-unescaped.
+        else:
+            match = self.compiled_pattern.fullmatch(target.root_string, pos=target.start, endpos = target.end) # pyright: ignore[reportOptionalMemberAccess] # Parser guarantees
+            if match:
+                if self.value.type == TokenType.REGEX:
+                    # NOTE: I am informed that re.sub is the fastest way to implement this, so it just uses a little funny construction to get there
+                    rep_str = match.re.sub(self.value.payload, target.payload)
+                    return Token(type = TokenType.RAW, root_string = rep_str, start = 0, end = len(rep_str))
+                else:
+                    return self.value   # Could be either Raw or Literal, just pass it on
+            return None # No match found
+        
+    def resolve_str(self, target_str: str) -> Token | None:
+        """Helper function to resolve against bare strings.
+        NOTE: Currently just creates token and calls token version, but could be optimized later if needed"""
+        self.resolve(Token(type=TokenType.LITERAL, root_string=target_str, start=0, end=len(target_str)))
+        
 class DefLibrary:
     """Organizes Definitions by pattern class and strength for efficient lookup and scoping."""
     pre_strong: List[Definition]
@@ -131,21 +188,21 @@ class DefLibrary:
 
     # TODO Convert to Enums as well, per note in Definition
     def push_strong(self, definition: Definition):
-        if definition.pattern_class == 'PRE':
+        if definition.pattern_class == DefClass.PRE_PATTERN:
             self.pre_strong.append(definition)
-        elif definition.pattern_class == 'BOUNDED':
+        elif definition.pattern_class == DefClass.BOUNDED:
             self.bounded_strong.append(definition)
-        elif definition.pattern_class == 'POST':
+        elif definition.pattern_class == DefClass.POST_PATTERN:
             self.post_strong.append(definition)
         else:
             raise ValueError(f"Invalid pattern class: {definition.pattern_class}")
     
     def push_weak(self, definition: Definition):
-        if definition.pattern_class == 'PRE':
+        if definition.pattern_class == DefClass.PRE_PATTERN:
             self.pre_weak.append(definition)
-        elif definition.pattern_class == 'BOUNDED':
+        elif definition.pattern_class == DefClass.BOUNDED:
             self.bounded_weak.append(definition)
-        elif definition.pattern_class == 'POST':
+        elif definition.pattern_class == DefClass.POST_PATTERN:
             self.post_weak.append(definition)
         else:
             raise ValueError(f"Invalid pattern class: {definition.pattern_class}")
@@ -191,18 +248,18 @@ class DefLibrary:
         """Get an iterator for only the pre-patterns in the outermost (unwrapped) scope layer"""
         return itertools.chain(
             reversed(self.pre_strong[self.pre_strong_scope[-1]:]),
-            itertools.islice(self.list_b, self.pre_weak_scope[-1], len(self.pre_weak))
+            itertools.islice(self.pre_weak, self.pre_weak_scope[-1], len(self.pre_weak))
         )
     
     def get_local_post_patterns(self):
         """Get an iterator for only the post-patterns in the outermost (unwrapped) scope layer"""
         return itertools.chain(
             reversed(self.post_strong[self.post_strong_scope[-1]:]),
-            itertools.islice(self.list_b, self.post_weak_scope[-1], len(self.post_weak))
+            itertools.islice(self.post_weak, self.post_weak_scope[-1], len(self.post_weak))
         )
     
+    # TODO Implement
     def resolve(self, key: str):
-        # TODO Implement
         return key
     
     def add_flat(self, other: 'DefLibrary'):
@@ -257,10 +314,11 @@ class Context:
     strong definitions are checked before weak ones, implementing priority-based
     lookup and lexical scoping.
     """
+    # TODO: Need to add initializers for appropriate starting points of these objects, I think?
     library: DefLibrary
-    positionals: List[Token] = None  # Positional arguments for the current scope, if applicable
-    prng: PRNG = None  # PRNG instance for deterministic randomization during evaluation
-    trace_log: Dict = None  # Optional dictionary to record evaluation trace information
+    positionals: List[Token]  # Positional arguments for the current scope, if applicable
+    prng: PRNG  # PRNG instance for deterministic randomization during evaluation
+    trace_log: Dict  # Optional dictionary to record evaluation trace information
     node_ttl: int = 1000  # Example TTL for AST nodes to prevent infinite recursion
     # TODO Should this have a List to store the flattened output TextNodes during final stringification?
 
@@ -271,37 +329,45 @@ class ASTNode:
     Evaluation is handled by separate evaluate_ast_node() function.
     """
     base_token: Token
-    children: List['ASTNode'] = None # TODO: How to handle text vs definition vs invocation vs nodes with children?
+    children: List['ASTNode'] = [] # TODO?: How to handle text vs definition vs invocation vs nodes with children?
 
     def __init__(self, base_token: Token, children: Optional[List] = None):
         self.base_token = base_token
         self.children = children if children is not None else []
     
     # The shared logic you envisioned
-    def _evaluate_scope(self, context: Context, local_defs: list, child_nodes: list) -> str:
-        """Handles context pushing, child iteration, and context popping for any node."""
-        context.push(local_defs)
-        result = "".join(child.execute(context) for child in child_nodes)
-        context.pop(local_defs)
-        return result
+    # def _evaluate_scope(self, context: Context, local_defs: list, child_nodes: list) -> str:
+        # """Handles context pushing, child iteration, and context popping for any node."""
+        # context.push(local_defs)
+        # result = "".join(child.execute(context) for child in child_nodes)
+        # context.pop(local_defs)
+        # return result
 
-    # TODO Not sur eif a single universal entry point is a good idea, or if this would be the right type signature to use
+    # TODO Not sure if a single universal entry point is a good idea, or if this would be the right type signature to use
     def process(self, context) -> Tuple[List['ASTNode'], Optional[DefLibrary]]:
         """Hook to trigger type-specific internal logic. Most nodes will try to return a list of output Literal TextNodes of their fully evaluated contents and no Library, but some like UnscopedInvocationNodes would return partially processed content with Definitions staged."""
         raise NotImplementedError # Implemented by subclasses
     
     # TODO Not sure if this is the right sort of implementation for the new logic
-    def flatten(self):
-        """Flattens nested nodes into a single-level list for final processing."""
-        flat_list = []
-        nodes_to_process = deque([self])
-        
+    def flatten(self) -> List['ASTNode']:
+        """Flattens nested nodes into a single-level list for final processing.
+
+        This returns only leaf nodes. When a node has children, the node itself
+        is not included in the result; its children are pushed for further
+        depth-first traversal.
+        """
+        # NOTE: Explicit typing to appease the all-knowing type checker that knows that the `self` of `class ASTNode` might not be an ASTNode
+        flat_list: List['ASTNode'] = []
+        nodes_to_process: List['ASTNode'] = []
+        nodes_to_process.append(self)
+
         while nodes_to_process:
-            current_node = nodes_to_process.popleft()
-            flat_list.append(current_node)
+            current_node = nodes_to_process.pop()  # Pop from end (LIFO)
             if current_node.children:
-                nodes_to_process.extend(current_node.children)
-        
+                nodes_to_process.extend(reversed(current_node.children))
+            else:
+                flat_list.append(current_node)
+
         return flat_list
 
 # class InvocationNode(ASTNode):
